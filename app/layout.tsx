@@ -13,6 +13,16 @@ export const metadata: Metadata = {
   title: 'WhatFood Wangige | Personal Supper Planner',
   description:
     'Budget-smart, balanced supper roulette & Wangige Market shopping list (300–500 KES) by Maurice Okeyo.',
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: '/pwa-icon/192',
+    apple: '/pwa-icon/192',
+  },
+  appleWebApp: {
+    capable: true,
+    title: 'WhatFood',
+    statusBarStyle: 'default',
+  },
 };
 
 export const viewport: Viewport = {
@@ -28,7 +38,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${jakarta.className} antialiased min-h-screen bg-glovo-cream text-gray-900`}>
+      <body
+        className={`${jakarta.className} antialiased min-h-screen bg-glovo-cream text-gray-900`}
+      >
         {children}
         <ServiceWorkerRegistrar />
       </body>

@@ -56,13 +56,11 @@ export default function HomePage() {
   const [history, setHistory] = useState<SupperHistoryEntry[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // PWA Install Prompt state
   const [installPrompt, setInstallPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState<boolean>(false);
   const [showInstallHelp, setShowInstallHelp] = useState<boolean>(false);
 
-  // Hydrate 4-day supper history safely on the client
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -79,9 +77,13 @@ export default function HomePage() {
     }
   }, []);
 
-  // Listen for Chrome's native PWA install prompt & standalone display mode
   useEffect(() => {
-    if (window.matchMedia('(display-mode: standalone)').matches) {
+    const standalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as Navigator & { standalone?: boolean }).standalone ===
+        true;
+
+    if (standalone) {
       setIsInstalled(true);
     }
 
@@ -94,7 +96,7 @@ export default function HomePage() {
       setIsInstalled(true);
       setInstallPrompt(null);
       setShowInstallHelp(false);
-      showToast('WhatFood installed to your home screen!');
+      showToast('WhatFood saved to your home screen!');
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
@@ -192,8 +194,8 @@ export default function HomePage() {
       <header className="bg-glovo-yellow pt-5 pb-12 px-4 rounded-b-[38px] shadow-xs">
         <div className="max-w-4xl mx-auto">
           {/* Top Location & Install App Action Bar */}
-          <div className="flex items-center justify-between gap-2">
-            <div className="inline-flex items-center gap-1.5 bg-white/95 px-3.5 py-1.5 rounded-full shadow-2xs text-xs font-extrabold text-gray-900">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="inline-flex items-center gap-1.5 bg-white/95 px-3 py-1.5 rounded-full shadow-2xs text-xs font-extrabold text-gray-900">
               <MapPin className="w-3.5 h-3.5 text-glovo-teal shrink-0" />
               <span>Wangige Market • Supper Planner</span>
             </div>
@@ -202,10 +204,10 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={handleInstallClick}
-                className="inline-flex items-center gap-1.5 bg-glovo-teal hover:bg-glovo-teal-dark active:scale-95 text-white px-3.5 py-1.5 rounded-full shadow-sm text-xs font-extrabold transition cursor-pointer shrink-0"
+                className="inline-flex items-center gap-1.5 bg-glovo-teal hover:bg-glovo-teal-dark active:scale-95 text-white px-3.5 py-2 rounded-full shadow-sm text-xs font-extrabold transition cursor-pointer touch-manipulation shrink-0"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>Install App</span>
+                <span>Save to Home Screen</span>
               </button>
             )}
           </div>
@@ -328,7 +330,6 @@ export default function HomePage() {
             />
           </div>
 
-          {/* Right Column on Desktop / Stacked Card on Mobile */}
           <div className="lg:col-span-5 space-y-4">
             <div className="bg-white rounded-[24px] p-5 shadow-sm border border-amber-100">
               <div className="flex items-center justify-between mb-3">
@@ -378,7 +379,6 @@ export default function HomePage() {
               )}
             </div>
 
-            {/* Wangige Shopping Strategy Card */}
             <div className="bg-glovo-yellow/35 rounded-[24px] p-5 border border-glovo-yellow">
               <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-gray-900 mb-1.5">
                 <Sparkles className="w-4 h-4 text-glovo-teal" />
@@ -422,7 +422,6 @@ export default function HomePage() {
                   }`}
                 >
                   <div>
-                    {/* Top Price & Cooldown Badges */}
                     <div className="flex items-center justify-between gap-2 mb-2.5">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="px-3 py-1 rounded-full bg-glovo-teal text-white text-xs font-extrabold">
@@ -447,7 +446,6 @@ export default function HomePage() {
                       )}
                     </div>
 
-                    {/* Title & Emoji */}
                     <div className="flex items-start gap-3">
                       <span className="text-3xl leading-none mt-0.5">
                         {meal.emoji}
@@ -462,7 +460,6 @@ export default function HomePage() {
                       </div>
                     </div>
 
-                    {/* Macro Summary Pills */}
                     <div className="flex flex-wrap gap-1.5 mt-3.5">
                       <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-glovo-cream text-gray-700 border border-amber-200/60">
                         ⚡ {meal.nutrition.carb}
@@ -476,7 +473,6 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  {/* Card Footer */}
                   <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs font-bold">
                     <span className="text-gray-500 inline-flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5 text-glovo-teal" />
@@ -495,7 +491,7 @@ export default function HomePage() {
         </section>
       </main>
 
-      {/* Install Helper Modal (Fallback when browser suppresses native prompt) */}
+      {/* Install Helper Modal */}
       {showInstallHelp && (
         <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/55 backdrop-blur-xs p-0 sm:p-4"
@@ -508,7 +504,7 @@ export default function HomePage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-glovo-teal font-extrabold text-sm">
                 <Smartphone className="w-5 h-5" />
-                <span>Add WhatFood to Home Screen</span>
+                <span>Save WhatFood to Home Screen</span>
               </div>
               <button
                 type="button"
@@ -523,7 +519,8 @@ export default function HomePage() {
               <p>
                 <strong>Android Chrome:</strong> Tap the{' '}
                 <strong>⋮ (3 dots)</strong> at the top-right of Chrome → tap{' '}
-                <strong>Add to home screen</strong> → <strong>Install</strong>.
+                <strong>Add to home screen</strong> →{' '}
+                <strong>Install</strong> (or <strong>Create shortcut</strong>).
               </p>
               <p>
                 <strong>Desktop Chrome / Edge:</strong> Click the{' '}
@@ -531,9 +528,8 @@ export default function HomePage() {
                 bar (or <strong>⋮ → Cast, save, and share → Install</strong>).
               </p>
               <p>
-                <strong>iPhone Safari:</strong> Tap the{' '}
-                <strong>Share</strong> button at the bottom →{' '}
-                <strong>Add to Home Screen</strong>.
+                <strong>iPhone Safari:</strong> Tap <strong>Share</strong> at
+                the bottom → <strong>Add to Home Screen</strong>.
               </p>
             </div>
 

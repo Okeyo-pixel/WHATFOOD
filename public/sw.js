@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'whatfood-wangige-v1';
+const CACHE_VERSION = 'whatfood-wangige-v3';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -9,7 +9,6 @@ const PRECACHE_URLS = [
   '/pwa-icon/512',
 ];
 
-// 1. Install: Pre-cache the core app shell and PWA icons
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
@@ -19,7 +18,6 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// 2. Activate: Purge outdated cache versions and take immediate control
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
@@ -35,19 +33,13 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// 3. Fetch: Network-first for page navigations, Cache-first for static assets
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-
-  // Only intercept same-origin GET requests
   if (request.method !== 'GET') return;
+
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== self.location.origin || url.pathname === '/sw.js') return;
 
-  // Never cache the service worker script itself
-  if (url.pathname === '/sw.js') return;
-
-  // HTML Navigation requests -> Network-First with cached '/' fallback
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
@@ -64,23 +56,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static JS/CSS chunks (/_next/static/), fonts, and PWA icons -> Cache-First
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
+      if (cachedResponse) return cachedResponse;
 
       return fetch(request).then((networkResponse) => {
         if (!networkResponse || networkResponse.status !== 200) {
           return networkResponse;
         }
-
         const copy = networkResponse.clone();
         const targetCache = url.pathname.startsWith('/_next/static/')
           ? STATIC_CACHE
           : RUNTIME_CACHE;
-
         caches.open(targetCache).then((cache) => cache.put(request, copy));
         return networkResponse;
       });
