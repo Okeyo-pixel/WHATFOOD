@@ -9,7 +9,6 @@
   --color-glovo-ink: #1F2937;
 }
 
-/* Smooth scrolling and crisp mobile tap feedback */
 html {
   scroll-behavior: smooth;
   -webkit-tap-highlight-color: transparent;
@@ -20,10 +19,10 @@ body {
   color: #1F2937;
 }
 
-/* Hide horizontal scrollbar on mobile category bubbles while keeping swipe active */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;

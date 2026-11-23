@@ -10,6 +10,9 @@ import {
   Receipt,
   Sparkles,
   CheckCircle2,
+  Download,
+  Smartphone,
+  X,
 } from 'lucide-react';
 import {
   BUDGET_PRESETS,
@@ -27,7 +30,12 @@ interface SupperHistoryEntry {
   mealName: string;
   emoji: string;
   costKes: number;
-  eatenAt: number; // Epoch ms
+  eatenAt: number;
+}
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
 const STORAGE_KEY = 'whatfood_wangige_history_v1';
@@ -48,6 +56,12 @@ export default function HomePage() {
   const [history, setHistory] = useState<SupperHistoryEntry[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // PWA Install Prompt state
+  const [installPrompt, setInstallPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null);
+  const [isInstalled, setIsInstalled] = useState<boolean>(false);
+  const [showInstallHelp, setShowInstallHelp] = useState<boolean>(false);
+
   // Hydrate 4-day supper history safely on the client
   useEffect(() => {
     try {
@@ -65,6 +79,33 @@ export default function HomePage() {
     }
   }, []);
 
+  // Listen for Chrome's native PWA install prompt & standalone display mode
+  useEffect(() => {
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true);
+    }
+
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e as BeforeInstallPromptEvent);
+    };
+
+    const handleAppInstalled = () => {
+      setIsInstalled(true);
+      setInstallPrompt(null);
+      setShowInstallHelp(false);
+      showToast('WhatFood installed to your home screen!');
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
   const recentMealIds = useMemo(
     () => Array.from(new Set(history.map((item) => item.mealId))),
     [history]
@@ -75,7 +116,6 @@ export default function HomePage() {
     [maxBudgetKes, activeCategory]
   );
 
-  // Sort fresh meals first, pushing meals eaten in the last 4 days to the bottom
   const sortedMeals = useMemo(() => {
     return [...filteredMeals].sort((a, b) => {
       const aRecent = recentMealIds.includes(a.id) ? 1 : 0;
@@ -90,6 +130,19 @@ export default function HomePage() {
     setTimeout(() => {
       setToastMessage((prev) => (prev === msg ? null : prev));
     }, 3200);
+  };
+
+  const handleInstallClick = async () => {
+    if (installPrompt) {
+      await installPrompt.prompt();
+      const choice = await installPrompt.userChoice;
+      if (choice.outcome === 'accepted') {
+        setInstallPrompt(null);
+        setIsInstalled(true);
+      }
+      return;
+    }
+    setShowInstallHelp(true);
   };
 
   const handleLogSupper = (meal: Meal) => {
@@ -138,16 +191,23 @@ export default function HomePage() {
       {/* Curved Glovo Yellow Hero Header */}
       <header className="bg-glovo-yellow pt-5 pb-12 px-4 rounded-b-[38px] shadow-xs">
         <div className="max-w-4xl mx-auto">
-          {/* Top Location & Brand Bar */}
+          {/* Top Location & Install App Action Bar */}
           <div className="flex items-center justify-between gap-2">
             <div className="inline-flex items-center gap-1.5 bg-white/95 px-3.5 py-1.5 rounded-full shadow-2xs text-xs font-extrabold text-gray-900">
-              <MapPin className="w-3.5 h-3.5 text-glovo-teal" />
+              <MapPin className="w-3.5 h-3.5 text-glovo-teal shrink-0" />
               <span>Wangige Market • Supper Planner</span>
             </div>
 
-            <span className="text-xs font-extrabold text-gray-900/80 hidden sm:inline">
-              whatfood.mauriceokeyo.com
-            </span>
+            {!isInstalled && (
+              <button
+                type="button"
+                onClick={handleInstallClick}
+                className="inline-flex items-center gap-1.5 bg-glovo-teal hover:bg-glovo-teal-dark active:scale-95 text-white px-3.5 py-1.5 rounded-full shadow-sm text-xs font-extrabold transition cursor-pointer shrink-0"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Install App</span>
+              </button>
+            )}
           </div>
 
           {/* Hero Headline */}
@@ -268,7 +328,7 @@ export default function HomePage() {
             />
           </div>
 
-          {/* Right Column on Desktop / Stacked Card on Mobile: Anti-Repeat Log & Quick Guide */}
+          {/* Right Column on Desktop / Stacked Card on Mobile */}
           <div className="lg:col-span-5 space-y-4">
             <div className="bg-white rounded-[24px] p-5 shadow-sm border border-amber-100">
               <div className="flex items-center justify-between mb-3">
@@ -434,6 +494,59 @@ export default function HomePage() {
           </div>
         </section>
       </main>
+
+      {/* Install Helper Modal (Fallback when browser suppresses native prompt) */}
+      {showInstallHelp && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/55 backdrop-blur-xs p-0 sm:p-4"
+          onClick={() => setShowInstallHelp(false)}
+        >
+          <div
+            className="w-full sm:max-w-md bg-white rounded-t-[28px] sm:rounded-[28px] p-6 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-glovo-teal font-extrabold text-sm">
+                <Smartphone className="w-5 h-5" />
+                <span>Add WhatFood to Home Screen</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowInstallHelp(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5 text-xs sm:text-sm text-gray-700 bg-glovo-cream p-4 rounded-2xl border border-amber-200">
+              <p>
+                <strong>Android Chrome:</strong> Tap the{' '}
+                <strong>⋮ (3 dots)</strong> at the top-right of Chrome → tap{' '}
+                <strong>Add to home screen</strong> → <strong>Install</strong>.
+              </p>
+              <p>
+                <strong>Desktop Chrome / Edge:</strong> Click the{' '}
+                <strong>Install icon</strong> in the right side of the address
+                bar (or <strong>⋮ → Cast, save, and share → Install</strong>).
+              </p>
+              <p>
+                <strong>iPhone Safari:</strong> Tap the{' '}
+                <strong>Share</strong> button at the bottom →{' '}
+                <strong>Add to Home Screen</strong>.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowInstallHelp(false)}
+              className="w-full py-3 rounded-full bg-glovo-teal text-white font-extrabold text-sm cursor-pointer"
+            >
+              Got It
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Mama Mboga Receipt & Cooking Modal */}
       <MealReceiptModal
