@@ -10,9 +10,9 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'WhatFood Wangige | Personal Supper Planner',
+  title: 'WhatFood Kenya | Supper & Craving Planner',
   description:
-    'Budget-smart, balanced supper roulette & Wangige Market shopping list (300–500 KES) by Maurice Okeyo.',
+    '112+ Kenyan bachelor & middle-class suppers, regional classics, and street bites from 80 to 500 bob.',
   manifest: '/manifest.webmanifest',
   icons: {
     icon: '/pwa-icon/192',

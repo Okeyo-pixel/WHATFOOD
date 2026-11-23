@@ -3,10 +3,10 @@ import type { MetadataRoute } from 'next';
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: '/',
-    name: 'WhatFood Wangige — Supper Planner',
+    name: 'WhatFood Kenya — Supper & Craving Planner',
     short_name: 'WhatFood',
     description:
-      'Budget-smart Kenyan supper roulette & Wangige Market shopping list (300–500 KES).',
+      '112+ Kenyan suppers, regional classics, and street bites (80–500 bob).',
     start_url: '/',
     scope: '/',
     display: 'standalone',

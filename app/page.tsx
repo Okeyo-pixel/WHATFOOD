@@ -13,13 +13,20 @@ import {
   Download,
   Smartphone,
   X,
+  Search,
+  Globe2,
 } from 'lucide-react';
 import {
   BUDGET_PRESETS,
   CATEGORY_BUBBLES,
   FilterCategoryId,
+  MAX_BUDGET_KES,
   MEALS,
+  MIN_BUDGET_KES,
   Meal,
+  REGION_LABELS,
+  REGION_PILLS,
+  RegionFilterId,
   filterMeals,
 } from '@/data/meals';
 import SpinWheel from '@/components/SpinWheel';
@@ -38,8 +45,9 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
-const STORAGE_KEY = 'whatfood_wangige_history_v1';
+const STORAGE_KEY = 'whatfood_kenya_history_v2';
 const FOUR_DAYS_MS = 4 * 24 * 60 * 60 * 1000;
+const INITIAL_VISIBLE_CARDS = 24;
 
 function formatRelativeDay(timestamp: number): string {
   const diffHours = Math.floor((Date.now() - timestamp) / (1000 * 60 * 60));
@@ -50,8 +58,12 @@ function formatRelativeDay(timestamp: number): string {
 }
 
 export default function HomePage() {
-  const [maxBudgetKes, setMaxBudgetKes] = useState<number>(400);
+  const [maxBudgetKes, setMaxBudgetKes] = useState<number>(MAX_BUDGET_KES);
   const [activeCategory, setActiveCategory] = useState<FilterCategoryId>('all');
+  const [activeRegion, setActiveRegion] = useState<RegionFilterId>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [visibleCount, setVisibleCount] = useState<number>(INITIAL_VISIBLE_CARDS);
+
   const [selectedMeal, setSelectedMeal] = useState<Meal | null>(null);
   const [history, setHistory] = useState<SupperHistoryEntry[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -61,22 +73,29 @@ export default function HomePage() {
   const [isInstalled, setIsInstalled] = useState<boolean>(false);
   const [showInstallHelp, setShowInstallHelp] = useState<boolean>(false);
 
+  // Reset pagination whenever filters change
+  useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE_CARDS);
+  }, [maxBudgetKes, activeCategory, activeRegion, searchQuery]);
+
+  // Hydrate 4-day supper history
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const raw =
+        window.localStorage.getItem(STORAGE_KEY) ||
+        window.localStorage.getItem('whatfood_wangige_history_v1');
       if (!raw) return;
       const parsed: SupperHistoryEntry[] = JSON.parse(raw);
       const cutoff = Date.now() - FOUR_DAYS_MS;
       const validRecent = parsed.filter((entry) => entry.eatenAt >= cutoff);
       setHistory(validRecent);
-      if (validRecent.length !== parsed.length) {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(validRecent));
-      }
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(validRecent));
     } catch {
       // Ignore malformed storage
     }
   }, []);
 
+  // Listen for PWA install prompt
   useEffect(() => {
     const standalone =
       window.matchMedia('(display-mode: standalone)').matches ||
@@ -114,8 +133,15 @@ export default function HomePage() {
   );
 
   const filteredMeals = useMemo(
-    () => filterMeals(MEALS, maxBudgetKes, activeCategory),
-    [maxBudgetKes, activeCategory]
+    () =>
+      filterMeals(
+        MEALS,
+        maxBudgetKes,
+        activeCategory,
+        activeRegion,
+        searchQuery
+      ),
+    [maxBudgetKes, activeCategory, activeRegion, searchQuery]
   );
 
   const sortedMeals = useMemo(() => {
@@ -126,6 +152,8 @@ export default function HomePage() {
       return a.totalCostKes - b.totalCostKes;
     });
   }, [filteredMeals, recentMealIds]);
+
+  const visibleMeals = sortedMeals.slice(0, visibleCount);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -159,7 +187,7 @@ export default function HomePage() {
     const updated = [
       newEntry,
       ...history.filter((entry) => entry.eatenAt >= cutoff),
-    ].slice(0, 12);
+    ].slice(0, 15);
 
     setHistory(updated);
     try {
@@ -167,7 +195,7 @@ export default function HomePage() {
     } catch {
       // Ignore storage quota errors
     }
-    showToast(`Logged ${meal.shortLabel} (${meal.totalCostKes} KES) for tonight!`);
+    showToast(`Logged ${meal.shortLabel} (${meal.totalCostKes} bob) for tonight!`);
   };
 
   const handleClearHistory = () => {
@@ -178,6 +206,13 @@ export default function HomePage() {
       // Ignore storage errors
     }
     showToast('4-day supper cooldown cleared.');
+  };
+
+  const handleResetFilters = () => {
+    setMaxBudgetKes(MAX_BUDGET_KES);
+    setActiveCategory('all');
+    setActiveRegion('all');
+    setSearchQuery('');
   };
 
   return (
@@ -197,7 +232,7 @@ export default function HomePage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="inline-flex items-center gap-1.5 bg-white/95 px-3 py-1.5 rounded-full shadow-2xs text-xs font-extrabold text-gray-900">
               <MapPin className="w-3.5 h-3.5 text-glovo-teal shrink-0" />
-              <span>Wangige Market • Supper Planner</span>
+              <span>🇰🇪 Kenya • Supper &amp; Craving Planner</span>
             </div>
 
             {!isInstalled && (
@@ -215,11 +250,12 @@ export default function HomePage() {
           {/* Hero Headline */}
           <div className="mt-4">
             <h1 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">
-              What&apos;s cooking tonight, Maurice?
+              What&apos;s on the menu tonight?
             </h1>
             <p className="text-xs sm:text-sm font-semibold text-gray-900/80 mt-1">
-              Balanced solo suppers priced for Wangige butcheries &amp; mama
-              mboga stalls.
+              {MEALS.length} Kenyan bachelor &amp; middle-class suppers, hotel
+              hits, and street bites — from {MIN_BUDGET_KES} to {MAX_BUDGET_KES}{' '}
+              bob.
             </p>
           </div>
 
@@ -232,10 +268,10 @@ export default function HomePage() {
                 </div>
                 <div>
                   <span className="text-[11px] font-extrabold uppercase tracking-wider text-gray-400 block">
-                    Tonight&apos;s Supper Ceiling
+                    Tonight&apos;s Pocket Ceiling
                   </span>
                   <span className="text-lg sm:text-xl font-black text-gray-900">
-                    Up to {maxBudgetKes} KES
+                    Up to {maxBudgetKes} bob
                   </span>
                 </div>
               </div>
@@ -245,11 +281,11 @@ export default function HomePage() {
               </span>
             </div>
 
-            {/* Range Slider */}
+            {/* Range Slider: 80 bob to 500 bob */}
             <input
               type="range"
-              min={300}
-              max={500}
+              min={MIN_BUDGET_KES}
+              max={MAX_BUDGET_KES}
               step={10}
               value={maxBudgetKes}
               onChange={(e) => setMaxBudgetKes(Number(e.target.value))}
@@ -272,7 +308,7 @@ export default function HomePage() {
                         : 'bg-glovo-cream hover:bg-amber-100 text-gray-800 border border-amber-200/70'
                     }`}
                   >
-                    {preset} KES
+                    {preset}/-
                   </button>
                 );
               })}
@@ -282,8 +318,8 @@ export default function HomePage() {
       </header>
 
       {/* Main Content Container */}
-      <main className="max-w-4xl mx-auto px-4 -mt-6 space-y-6">
-        {/* Glovo Floating Category Bubbles */}
+      <main className="max-w-4xl mx-auto px-4 -mt-6 space-y-5">
+        {/* Glovo Floating Category Bubbles (11 Meal Styles & Vibes) */}
         <section aria-label="Meal categories">
           <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-2 px-1">
             {CATEGORY_BUBBLES.map((bubble) => {
@@ -308,11 +344,39 @@ export default function HomePage() {
                     className={`mt-2 text-[11px] sm:text-xs font-extrabold whitespace-nowrap px-2.5 py-0.5 rounded-full transition ${
                       isSelected
                         ? 'bg-glovo-teal text-white'
-                        : 'text-gray-800 bg-white/80'
+                        : 'text-gray-800 bg-white/85'
                     }`}
                   >
                     {bubble.label}
                   </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Kenyan Regional Cuisine Filter Strip */}
+        <section aria-label="Kenyan regional cuisines">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+            <span className="inline-flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wider text-gray-500 shrink-0 pr-1">
+              <Globe2 className="w-3.5 h-3.5 text-glovo-teal" />
+              Region:
+            </span>
+            {REGION_PILLS.map((region) => {
+              const isSelected = activeRegion === region.id;
+              return (
+                <button
+                  key={region.id}
+                  type="button"
+                  onClick={() => setActiveRegion(region.id)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition cursor-pointer shrink-0 ${
+                    isSelected
+                      ? 'bg-gray-900 text-glovo-yellow shadow-xs'
+                      : 'bg-white hover:bg-amber-50 text-gray-700 border border-amber-200/80'
+                  }`}
+                >
+                  <span>{region.emoji}</span>
+                  <span>{region.label}</span>
                 </button>
               );
             })}
@@ -358,7 +422,7 @@ export default function HomePage() {
                     &ldquo;Log Tonight&apos;s Supper&rdquo;
                   </strong>{' '}
                   inside any meal receipt to dim it on the wheel so you keep
-                  variety all week.
+                  fresh variety all week.
                 </p>
               ) : (
                 <ul className="space-y-2">
@@ -371,7 +435,7 @@ export default function HomePage() {
                         {entry.emoji} {entry.mealName}
                       </span>
                       <span className="text-[11px] font-semibold text-gray-500 shrink-0">
-                        {formatRelativeDay(entry.eatenAt)} • {entry.costKes} KES
+                        {formatRelativeDay(entry.eatenAt)} • {entry.costKes}/-
                       </span>
                     </li>
                   ))}
@@ -382,112 +446,167 @@ export default function HomePage() {
             <div className="bg-glovo-yellow/35 rounded-[24px] p-5 border border-glovo-yellow">
               <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-gray-900 mb-1.5">
                 <Sparkles className="w-4 h-4 text-glovo-teal" />
-                <span>Balanced Plate Formula</span>
+                <span>From 80/- Survival to 500/- Treat</span>
               </div>
               <p className="text-xs text-gray-800 leading-relaxed">
-                Every combo pairs an <strong>Energy Carb</strong> (Ugali,
-                Pishori, Shangi Mash, or Vibanda Chapati) with a{' '}
-                <strong>Protein</strong> and{' '}
-                <strong>Kienyeji / Fresh Greens</strong> + mama mboga
-                aromatics (nyanya, hoho, saumu &amp; dania).
+                Explore Swahili coastal curries, Western omena &amp; ingokho,
+                Central mukimo &amp; njahi, Kisii obokima &amp; ebitoke, plus
+                light suppers, breakfast-for-dinner, and mtaa street bites.
               </p>
             </div>
           </div>
         </section>
 
-        {/* Filtered Meal Cards Grid */}
-        <section aria-label="Eligible Wangige meals" className="pt-2">
-          <div className="flex items-center justify-between mb-3.5">
-            <h2 className="text-lg font-black text-gray-900">
-              Eligible Wangige Combos ({sortedMeals.length})
-            </h2>
-            <span className="text-xs font-bold text-gray-500">
-              Tap any card for receipt
-            </span>
-          </div>
+        {/* Search & Filtered Meal Cards Grid */}
+        <section aria-label="Eligible Kenyan meals" className="pt-2 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-gray-900">
+                Eligible Combos ({sortedMeals.length})
+              </h2>
+              <span className="text-xs font-bold text-gray-500">
+                Tap any card for local lore, shopping receipt &amp; prep steps
+              </span>
+            </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {sortedMeals.map((meal) => {
-              const isRecent = recentMealIds.includes(meal.id);
-              const balance = maxBudgetKes - meal.totalCostKes;
-
-              return (
-                <article
-                  key={meal.id}
-                  onClick={() => setSelectedMeal(meal)}
-                  className={`bg-white rounded-[24px] p-4 sm:p-5 shadow-sm hover:shadow-md border transition-all cursor-pointer flex flex-col justify-between ${
-                    isRecent
-                      ? 'border-gray-200 opacity-65 hover:opacity-95'
-                      : 'border-amber-100 hover:-translate-y-0.5'
-                  }`}
+            {/* Instant Search Bar */}
+            <div className="relative w-full sm:w-72">
+              <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search pilau, mutura, rolex, uji..."
+                className="w-full pl-9 pr-8 py-2 rounded-full bg-white border border-amber-200 text-xs sm:text-sm font-semibold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-glovo-teal"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Clear search"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 cursor-pointer"
                 >
-                  <div>
-                    <div className="flex items-center justify-between gap-2 mb-2.5">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="px-3 py-1 rounded-full bg-glovo-teal text-white text-xs font-extrabold">
-                          {meal.totalCostKes} KES
-                        </span>
-                        {balance > 0 && (
-                          <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 text-[11px] font-bold">
-                            +{balance} KES left
-                          </span>
-                        )}
-                        {meal.isKienyeji && (
-                          <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 text-[11px] font-extrabold">
-                            🥬 Kienyeji
-                          </span>
-                        )}
-                      </div>
-
-                      {isRecent && (
-                        <span className="px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-600 text-[10px] font-extrabold uppercase tracking-wide shrink-0">
-                          Eaten Recently
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-start gap-3">
-                      <span className="text-3xl leading-none mt-0.5">
-                        {meal.emoji}
-                      </span>
-                      <div>
-                        <h3 className="text-sm sm:text-base font-extrabold text-gray-900 leading-snug">
-                          {meal.name}
-                        </h3>
-                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                          {meal.tagline}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-1.5 mt-3.5">
-                      <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-glovo-cream text-gray-700 border border-amber-200/60">
-                        ⚡ {meal.nutrition.carb}
-                      </span>
-                      <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-glovo-cream text-gray-700 border border-amber-200/60">
-                        💪 {meal.nutrition.protein}
-                      </span>
-                      <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-glovo-cream text-gray-700 border border-amber-200/60">
-                        🥗 {meal.nutrition.greens}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs font-bold">
-                    <span className="text-gray-500 inline-flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-glovo-teal" />
-                      {meal.prepMinutes} mins prep
-                    </span>
-
-                    <span className="text-glovo-teal inline-flex items-center gap-1 font-extrabold">
-                      <Receipt className="w-3.5 h-3.5" />
-                      View Receipt →
-                    </span>
-                  </div>
-                </article>
-              );
-            })}
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
+
+          {sortedMeals.length === 0 ? (
+            <div className="bg-white rounded-[24px] p-8 text-center border border-amber-100">
+              <p className="text-sm font-bold text-gray-800">
+                No combos match your current budget, region, or search.
+              </p>
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="mt-3 px-4 py-2 rounded-full bg-glovo-teal text-white text-xs font-extrabold cursor-pointer"
+              >
+                Reset All Filters
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {visibleMeals.map((meal) => {
+                  const isRecent = recentMealIds.includes(meal.id);
+                  const balance = maxBudgetKes - meal.totalCostKes;
+
+                  return (
+                    <article
+                      key={meal.id}
+                      onClick={() => setSelectedMeal(meal)}
+                      className={`bg-white rounded-[24px] p-4 sm:p-5 shadow-sm hover:shadow-md border transition-all cursor-pointer flex flex-col justify-between ${
+                        isRecent
+                          ? 'border-gray-200 opacity-65 hover:opacity-95'
+                          : 'border-amber-100 hover:-translate-y-0.5'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-2.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="px-3 py-1 rounded-full bg-glovo-teal text-white text-xs font-extrabold">
+                              {meal.totalCostKes} bob
+                            </span>
+                            <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-[11px] font-bold">
+                              {REGION_LABELS[meal.region]}
+                            </span>
+                            {meal.isKienyeji && (
+                              <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 text-[11px] font-extrabold">
+                                🥬 Kienyeji
+                              </span>
+                            )}
+                          </div>
+
+                          {isRecent ? (
+                            <span className="px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-600 text-[10px] font-extrabold uppercase tracking-wide shrink-0">
+                              Recent
+                            </span>
+                          ) : (
+                            balance > 0 && (
+                              <span className="text-[11px] font-extrabold text-emerald-700 shrink-0">
+                                +{balance}/- left
+                              </span>
+                            )
+                          )}
+                        </div>
+
+                        <div className="flex items-start gap-3">
+                          <span className="text-3xl leading-none mt-0.5">
+                            {meal.emoji}
+                          </span>
+                          <div>
+                            <h3 className="text-sm sm:text-base font-extrabold text-gray-900 leading-snug">
+                              {meal.name}
+                            </h3>
+                            <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                              {meal.tagline}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5 mt-3.5">
+                          <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-glovo-cream text-gray-700 border border-amber-200/60">
+                            ⚡ {meal.nutrition.carb}
+                          </span>
+                          <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-glovo-cream text-gray-700 border border-amber-200/60">
+                            💪 {meal.nutrition.protein}
+                          </span>
+                          <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-glovo-cream text-gray-700 border border-amber-200/60">
+                            🥗 {meal.nutrition.greens}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs font-bold">
+                        <span className="text-gray-500 inline-flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-glovo-teal" />
+                          {meal.prepMinutes} mins prep
+                        </span>
+
+                        <span className="text-glovo-teal inline-flex items-center gap-1 font-extrabold">
+                          <Receipt className="w-3.5 h-3.5" />
+                          View Receipt →
+                        </span>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+
+              {visibleCount < sortedMeals.length && (
+                <div className="text-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount((prev) => prev + 24)}
+                    className="px-6 py-3 rounded-full bg-white hover:bg-amber-50 text-gray-900 font-extrabold text-xs sm:text-sm border-2 border-glovo-yellow shadow-xs transition cursor-pointer"
+                  >
+                    Load More Meals ({sortedMeals.length - visibleCount} more)
+                  </button>
+                </div>
+              )}
+            </>
+          )}
         </section>
       </main>
 
@@ -544,7 +663,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Mama Mboga Receipt & Cooking Modal */}
+      {/* Market & Kibanda Receipt Modal */}
       <MealReceiptModal
         meal={selectedMeal}
         maxBudgetKes={maxBudgetKes}

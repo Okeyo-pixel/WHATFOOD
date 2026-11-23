@@ -15,8 +15,9 @@ import {
   Leaf,
   Beef,
   Wheat,
+  BookOpen,
 } from 'lucide-react';
-import { Meal, VendorType } from '@/data/meals';
+import { Meal, REGION_LABELS, VendorType } from '@/data/meals';
 
 interface MealReceiptModalProps {
   meal: Meal | null;
@@ -30,6 +31,7 @@ const VENDOR_BADGE_STYLES: Record<VendorType, string> = {
   Butchery: 'bg-rose-100 text-rose-800 border-rose-200',
   'Mama Mboga': 'bg-emerald-100 text-emerald-800 border-emerald-200',
   'Kiosk / Duka': 'bg-amber-100 text-amber-800 border-amber-200',
+  'Kibanda / Bakery': 'bg-orange-100 text-orange-800 border-orange-200',
   'Pantry Buffer': 'bg-slate-100 text-slate-700 border-slate-200',
 };
 
@@ -44,14 +46,12 @@ export default function MealReceiptModal({
   const [copied, setCopied] = useState(false);
   const [justLogged, setJustLogged] = useState(false);
 
-  // Reset checklist and confirmation state whenever a different meal opens
   useEffect(() => {
     setCheckedItems({});
     setCopied(false);
     setJustLogged(false);
   }, [meal?.id]);
 
-  // Close modal on Escape key
   useEffect(() => {
     if (!meal) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -72,9 +72,10 @@ export default function MealReceiptModal({
 
   const handleCopyList = async () => {
     const lines = [
-      `🛒 Wangige Supper List: ${meal.name} (${meal.totalCostKes} KES)`,
+      `🛒 WhatFood Kenya List: ${meal.name} (${meal.totalCostKes} bob)`,
       ...meal.shoppingList.map(
-        (item) => `• [${item.vendor}] ${item.name} (${item.quantity}) — ${item.costKes} KES`
+        (item) =>
+          `• [${item.vendor}] ${item.name} (${item.quantity}) — ${item.costKes} bob`
       ),
     ];
     try {
@@ -82,7 +83,7 @@ export default function MealReceiptModal({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback ignored if clipboard permissions are blocked
+      // Ignore clipboard errors
     }
   };
 
@@ -114,9 +115,14 @@ export default function MealReceiptModal({
             <X className="w-5 h-5" />
           </button>
 
-          <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-gray-900/80 mb-1.5">
-            <ShoppingBag className="w-3.5 h-3.5" />
-            <span>Wangige Market Receipt</span>
+          <div className="flex flex-wrap items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-gray-900/80 mb-1.5 pr-10">
+            <span className="inline-flex items-center gap-1">
+              <ShoppingBag className="w-3.5 h-3.5" />
+              Market &amp; Kibanda Receipt
+            </span>
+            <span className="px-2 py-0.5 rounded-full bg-white/80 text-[10px] font-extrabold text-gray-900">
+              {REGION_LABELS[meal.region]}
+            </span>
           </div>
 
           <div className="flex items-start gap-3 pr-8">
@@ -138,10 +144,10 @@ export default function MealReceiptModal({
           <div className="mt-4 bg-white rounded-2xl p-3 shadow-xs flex items-center justify-between gap-2">
             <div>
               <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block">
-                Estimated Total
+                Estimated Cost
               </span>
               <span className="text-xl font-black text-gray-900">
-                {meal.totalCostKes} KES
+                {meal.totalCostKes} bob
               </span>
             </div>
 
@@ -149,7 +155,7 @@ export default function MealReceiptModal({
 
             <div>
               <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block">
-                Budget ({maxBudgetKes} KES)
+                Budget ({maxBudgetKes}/-)
               </span>
               <span
                 className={`text-sm font-extrabold ${
@@ -157,8 +163,8 @@ export default function MealReceiptModal({
                 }`}
               >
                 {isWithinBudget
-                  ? `+${balanceKes} KES change`
-                  : `${Math.abs(balanceKes)} KES over`}
+                  ? `+${balanceKes} bob change`
+                  : `${Math.abs(balanceKes)} bob over`}
               </span>
             </div>
 
@@ -178,17 +184,28 @@ export default function MealReceiptModal({
 
         {/* Scrollable Receipt Body */}
         <div className="p-5 overflow-y-auto space-y-5">
+          {/* Kenyan Local Food Lore */}
+          <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200 flex items-start gap-2.5">
+            <BookOpen className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+            <p className="text-xs text-gray-800 leading-relaxed">
+              <strong className="font-extrabold text-gray-900">
+                What&apos;s the Vibe:{' '}
+              </strong>
+              {meal.localLore}
+            </p>
+          </div>
+
           {/* Balanced Diet Badges */}
           <div>
             <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-400 mb-2">
-              Balanced Plate Check
+              Plate Breakdown
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div className="p-2.5 rounded-2xl bg-amber-50 border border-amber-200/80 flex items-center gap-2">
                 <Wheat className="w-4 h-4 text-amber-600 shrink-0" />
                 <div className="min-w-0">
                   <span className="text-[10px] font-bold uppercase text-amber-700 block">
-                    Energy Carb
+                    Energy / Base
                   </span>
                   <span className="text-xs font-bold text-gray-900 truncate block">
                     {meal.nutrition.carb}
@@ -212,7 +229,7 @@ export default function MealReceiptModal({
                 <Leaf className="w-4 h-4 text-glovo-teal shrink-0" />
                 <div className="min-w-0">
                   <span className="text-[10px] font-bold uppercase text-emerald-700 block">
-                    Greens / Veg
+                    Greens / Sides
                   </span>
                   <span className="text-xs font-bold text-gray-900 truncate block">
                     {meal.nutrition.greens}
@@ -222,7 +239,7 @@ export default function MealReceiptModal({
             </div>
           </div>
 
-          {/* Itemized Mama Mboga & Butchery Receipt */}
+          {/* Itemized Shopping Receipt */}
           <div className="bg-glovo-cream rounded-[20px] p-4 border border-dashed border-amber-300">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-700">
@@ -291,7 +308,7 @@ export default function MealReceiptModal({
                       </div>
 
                       <span className="text-xs sm:text-sm font-extrabold text-gray-900 shrink-0">
-                        {item.costKes} KES
+                        {item.costKes}/-
                       </span>
                     </button>
                   </li>
@@ -305,12 +322,12 @@ export default function MealReceiptModal({
             </div>
           </div>
 
-          {/* 15–25 Min Solo Cooking Guide */}
+          {/* Solo Prep Guide */}
           <div>
             <div className="flex items-center gap-1.5 mb-2.5">
               <Flame className="w-4 h-4 text-orange-500" />
               <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-500">
-                Solo Prep Steps ({meal.prepMinutes} Mins)
+                Quick Solo Prep ({meal.prepMinutes} Mins)
               </h3>
             </div>
             <ol className="space-y-2.5">
@@ -328,12 +345,12 @@ export default function MealReceiptModal({
             </ol>
           </div>
 
-          {/* Wangige Insider Tip */}
+          {/* Local Mtaa Tip */}
           <div className="p-3.5 rounded-2xl bg-emerald-50/90 border border-emerald-200 flex items-start gap-2.5">
             <Sparkles className="w-4 h-4 text-glovo-teal shrink-0 mt-0.5" />
             <p className="text-xs text-emerald-950 leading-relaxed">
-              <strong className="font-extrabold">Wangige Market Tip: </strong>
-              {meal.wangigeTip}
+              <strong className="font-extrabold">Local Mtaa Tip: </strong>
+              {meal.localTip}
             </p>
           </div>
         </div>
