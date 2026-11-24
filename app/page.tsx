@@ -17,6 +17,7 @@ import {
   Globe2,
   Crown,
   Users,
+  Heart,
 } from 'lucide-react';
 import {
   BUDGET_PRESETS,
@@ -40,6 +41,7 @@ import {
 } from '@/data/meals';
 import SpinWheel from '@/components/SpinWheel';
 import MealReceiptModal from '@/components/MealReceiptModal';
+import DonateModal from '@/components/DonateModal';
 
 interface SupperHistoryEntry {
   mealId: string;
@@ -89,6 +91,7 @@ export default function HomePage() {
     useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState<boolean>(false);
   const [showInstallHelp, setShowInstallHelp] = useState<boolean>(false);
+  const [showDonateModal, setShowDonateModal] = useState<boolean>(false);
 
   const isFeastMode = activeCategory === 'feast';
   const activeMaxBudget = isFeastMode ? feastBudgetKes : everydayBudgetKes;
@@ -289,7 +292,7 @@ export default function HomePage() {
         }`}
       >
         <div className="max-w-4xl mx-auto">
-          {/* Top Location & Install App Action Bar */}
+          {/* Top Location, Donate & Install App Action Bar */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full shadow-2xs text-xs font-extrabold ${
@@ -310,20 +313,35 @@ export default function HomePage() {
               </span>
             </div>
 
-            {!isInstalled && (
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
-                onClick={handleInstallClick}
-                className={`inline-flex items-center gap-1.5 active:scale-95 px-3.5 py-2 rounded-full shadow-sm text-xs font-extrabold transition cursor-pointer touch-manipulation shrink-0 ${
+                onClick={() => setShowDonateModal(true)}
+                className={`inline-flex items-center gap-1.5 active:scale-95 px-3.5 py-2 rounded-full shadow-sm text-xs font-extrabold transition cursor-pointer touch-manipulation ${
                   isFeastMode
-                    ? 'bg-glovo-yellow hover:bg-glovo-yellow-dark text-gray-900'
-                    : 'bg-glovo-teal hover:bg-glovo-teal-dark text-white'
+                    ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                    : 'bg-white/95 hover:bg-white text-glovo-teal'
                 }`}
               >
-                <Download className="w-3.5 h-3.5" />
-                <span>Save to Home Screen</span>
+                <Heart className="w-3.5 h-3.5 fill-current" />
+                <span>Donate</span>
               </button>
-            )}
+
+              {!isInstalled && (
+                <button
+                  type="button"
+                  onClick={handleInstallClick}
+                  className={`inline-flex items-center gap-1.5 active:scale-95 px-3.5 py-2 rounded-full shadow-sm text-xs font-extrabold transition cursor-pointer touch-manipulation ${
+                    isFeastMode
+                      ? 'bg-glovo-yellow hover:bg-glovo-yellow-dark text-gray-900'
+                      : 'bg-glovo-teal hover:bg-glovo-teal-dark text-white'
+                  }`}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Save to Home Screen</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Hero Headline */}
@@ -880,6 +898,13 @@ export default function HomePage() {
         }
         onClose={() => setSelectedMeal(null)}
         onLogSupper={handleLogSupper}
+      />
+
+      {/* M-Pesa STK Push Donate Modal */}
+      <DonateModal
+        isOpen={showDonateModal}
+        isFeastMode={isFeastMode}
+        onClose={() => setShowDonateModal(false)}
       />
     </div>
   );
