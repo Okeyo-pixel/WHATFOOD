@@ -22,11 +22,23 @@ export type FoodRegion =
   | 'highland'
   | 'urban';
 
+export type FeastSubCategory =
+  | 'choma'
+  | 'seafood'
+  | 'asian'
+  | 'bistro'
+  | 'roasts'
+  | 'brunch';
+
+export type FeastVibeFilterId = 'all' | FeastSubCategory;
+
+export type ServingTier = 'Solo Treat' | 'Date Night (2)' | 'Hosting (3–4)';
+
 export type FilterCategoryId =
   | 'all'
   | PrimaryCategory
   | 'kienyeji'
-  | 'under250';
+  | 'feast';
 
 export type RegionFilterId = 'all' | FoodRegion;
 
@@ -35,7 +47,11 @@ export type VendorType =
   | 'Mama Mboga'
   | 'Kiosk / Duka'
   | 'Kibanda / Bakery'
-  | 'Pantry Buffer';
+  | 'Pantry Buffer'
+  | 'Supermarket'
+  | 'Prime Butchery / Fishmonger'
+  | 'Specialty Grocer'
+  | 'Artisan Bakery / Deli';
 
 export interface ShoppingItem {
   name: string;
@@ -63,11 +79,15 @@ export interface Meal {
   prepMinutes: number;
   wheelColor: string;
   tagline: string;
-  localLore: string; // Explains local names & Kenyan food culture
+  localLore: string;
   nutrition: NutritionProfile;
   shoppingList: ShoppingItem[];
   cookingSteps: string[];
   localTip: string;
+  // Payday / "Feeling Rich?" metadata (undefined for everyday 80–500 bob meals)
+  isFeast?: boolean;
+  feastCategory?: FeastSubCategory;
+  servingTier?: ServingTier;
 }
 
 export interface CategoryBubble {
@@ -82,12 +102,22 @@ export interface RegionPill {
   emoji: string;
 }
 
+export interface FeastVibePill {
+  id: FeastVibeFilterId;
+  label: string;
+  emoji: string;
+}
+
 export const MIN_BUDGET_KES = 80;
 export const MAX_BUDGET_KES = 500;
 export const BUDGET_PRESETS = [150, 250, 350, 450, 500] as const;
 
+export const FEAST_MIN_BUDGET_KES = 500;
+export const FEAST_MAX_BUDGET_KES = 5000;
+export const FEAST_BUDGET_PRESETS = [1000, 2000, 3000, 4000, 5000] as const;
+
 export const CATEGORY_BUBBLES: CategoryBubble[] = [
-  { id: 'all', label: 'All 112+ Meals', emoji: '🍽️' },
+  { id: 'all', label: 'All 112 Meals', emoji: '🍽️' },
   { id: 'ugali', label: 'Ugali Classics', emoji: '🌽' },
   { id: 'rice', label: 'Rice & Pilau', emoji: '🍚' },
   { id: 'tubers', label: 'Mash, Mukimo & Matoke', emoji: '🥔' },
@@ -97,7 +127,17 @@ export const CATEGORY_BUBBLES: CategoryBubble[] = [
   { id: 'lunch', label: 'Supper Like Lunch', emoji: '🍛' },
   { id: 'breakfast', label: 'Supper Like Breakfast', emoji: '☕' },
   { id: 'snacks', label: 'Snacks & Bites', emoji: '🍢' },
-  { id: 'under250', label: 'Under 250 bob', emoji: '💸' },
+  { id: 'feast', label: 'Feeling Rich?', emoji: '👑' },
+];
+
+export const FEAST_VIBE_PILLS: FeastVibePill[] = [
+  { id: 'all', label: 'All Feasts', emoji: '👑' },
+  { id: 'choma', label: 'Choma & Steakhouse', emoji: '🥩' },
+  { id: 'seafood', label: 'Pwani Seafood & Swahili', emoji: '🦐' },
+  { id: 'asian', label: 'Indian & Asian Kitchen', emoji: '🍛' },
+  { id: 'bistro', label: 'Creamy Pasta & Bistro', emoji: '🍝' },
+  { id: 'roasts', label: 'Roasts & Slow-Cooked', emoji: '🍗' },
+  { id: 'brunch', label: 'Boujee Brunch & Platters', emoji: '🥂' },
 ];
 
 export const REGION_PILLS: RegionPill[] = [
@@ -141,7 +181,7 @@ export type CompactItem = [string, string, VendorType, number];
 let colorCursor = 0;
 
 /**
- * Compact builder that automatically computes exact KES totals from itemized shopping lists.
+ * Builder for everyday 80–500 bob meals.
  */
 export function defineMeal(
   id: string,
@@ -197,7 +237,52 @@ export function defineMeal(
 }
 
 /**
- * Filters meals by max budget, primary/vibe category bubble, regional cuisine, and optional search text.
+ * Builder for "Feeling Rich?" payday & hosting feasts (500–5,000 bob).
+ */
+export function defineFeastMeal(
+  id: string,
+  name: string,
+  shortLabel: string,
+  emoji: string,
+  plateStyle: PrimaryCategory,
+  feastCategory: FeastSubCategory,
+  servingTier: ServingTier,
+  region: FoodRegion,
+  prepMinutes: number,
+  tagline: string,
+  localLore: string,
+  nutrition: [string, string, string],
+  items: CompactItem[],
+  cookingSteps: string[],
+  localTip: string
+): Meal {
+  const base = defineMeal(
+    id,
+    name,
+    shortLabel,
+    emoji,
+    plateStyle,
+    [],
+    region,
+    prepMinutes,
+    tagline,
+    localLore,
+    nutrition,
+    items,
+    cookingSteps,
+    localTip
+  );
+
+  return {
+    ...base,
+    isFeast: true,
+    feastCategory,
+    servingTier,
+  };
+}
+
+/**
+ * Filters everyday 80–500 bob meals.
  */
 export function filterMeals(
   meals: Meal[],
@@ -220,11 +305,10 @@ export function filterMeals(
 
     switch (activeCategory) {
       case 'all':
+      case 'feast':
         return true;
       case 'kienyeji':
         return meal.isKienyeji;
-      case 'under250':
-        return meal.totalCostKes <= 250;
       case 'light':
       case 'lunch':
       case 'breakfast':
@@ -236,5 +320,34 @@ export function filterMeals(
       default:
         return meal.category === activeCategory;
     }
+  });
+}
+
+/**
+ * Filters "Feeling Rich?" payday feasts (500–5,000 bob) by ceiling, payday vibe, region, and search.
+ */
+export function filterFeastMeals(
+  feasts: Meal[],
+  maxBudgetKes: number,
+  activeFeastVibe: FeastVibeFilterId,
+  activeRegion: RegionFilterId = 'all',
+  searchQuery = ''
+): Meal[] {
+  const q = searchQuery.trim().toLowerCase();
+
+  return feasts.filter((meal) => {
+    if (meal.totalCostKes > maxBudgetKes) return false;
+    if (activeFeastVibe !== 'all' && meal.feastCategory !== activeFeastVibe) {
+      return false;
+    }
+    if (activeRegion !== 'all' && meal.region !== activeRegion) return false;
+
+    if (q) {
+      const haystack =
+        `${meal.name} ${meal.shortLabel} ${meal.tagline} ${meal.localLore} ${meal.servingTier ?? ''} ${meal.nutrition.carb} ${meal.nutrition.protein} ${meal.nutrition.greens}`.toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+
+    return true;
   });
 }

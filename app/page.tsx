@@ -15,10 +15,18 @@ import {
   X,
   Search,
   Globe2,
+  Crown,
+  Users,
 } from 'lucide-react';
 import {
   BUDGET_PRESETS,
   CATEGORY_BUBBLES,
+  FEAST_BUDGET_PRESETS,
+  FEAST_MAX_BUDGET_KES,
+  FEAST_MEALS,
+  FEAST_MIN_BUDGET_KES,
+  FEAST_VIBE_PILLS,
+  FeastVibeFilterId,
   FilterCategoryId,
   MAX_BUDGET_KES,
   MEALS,
@@ -27,6 +35,7 @@ import {
   REGION_LABELS,
   REGION_PILLS,
   RegionFilterId,
+  filterFeastMeals,
   filterMeals,
 } from '@/data/meals';
 import SpinWheel from '@/components/SpinWheel';
@@ -58,11 +67,19 @@ function formatRelativeDay(timestamp: number): string {
 }
 
 export default function HomePage() {
-  const [maxBudgetKes, setMaxBudgetKes] = useState<number>(MAX_BUDGET_KES);
+  const [everydayBudgetKes, setEverydayBudgetKes] =
+    useState<number>(MAX_BUDGET_KES);
+  const [feastBudgetKes, setFeastBudgetKes] =
+    useState<number>(FEAST_MAX_BUDGET_KES);
+
   const [activeCategory, setActiveCategory] = useState<FilterCategoryId>('all');
+  const [activeFeastVibe, setActiveFeastVibe] =
+    useState<FeastVibeFilterId>('all');
   const [activeRegion, setActiveRegion] = useState<RegionFilterId>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [visibleCount, setVisibleCount] = useState<number>(INITIAL_VISIBLE_CARDS);
+  const [visibleCount, setVisibleCount] = useState<number>(
+    INITIAL_VISIBLE_CARDS
+  );
 
   const [selectedMeal, setSelectedMeal] = useState<Meal | null>(null);
   const [history, setHistory] = useState<SupperHistoryEntry[]>([]);
@@ -73,12 +90,21 @@ export default function HomePage() {
   const [isInstalled, setIsInstalled] = useState<boolean>(false);
   const [showInstallHelp, setShowInstallHelp] = useState<boolean>(false);
 
-  // Reset pagination whenever filters change
+  const isFeastMode = activeCategory === 'feast';
+  const activeMaxBudget = isFeastMode ? feastBudgetKes : everydayBudgetKes;
+  const activeCatalogTotal = isFeastMode ? FEAST_MEALS.length : MEALS.length;
+
   useEffect(() => {
     setVisibleCount(INITIAL_VISIBLE_CARDS);
-  }, [maxBudgetKes, activeCategory, activeRegion, searchQuery]);
+  }, [
+    everydayBudgetKes,
+    feastBudgetKes,
+    activeCategory,
+    activeFeastVibe,
+    activeRegion,
+    searchQuery,
+  ]);
 
-  // Hydrate 4-day supper history
   useEffect(() => {
     try {
       const raw =
@@ -95,7 +121,6 @@ export default function HomePage() {
     }
   }, []);
 
-  // Listen for PWA install prompt
   useEffect(() => {
     const standalone =
       window.matchMedia('(display-mode: standalone)').matches ||
@@ -115,7 +140,7 @@ export default function HomePage() {
       setIsInstalled(true);
       setInstallPrompt(null);
       setShowInstallHelp(false);
-      showToast('WhatFood saved to your home screen!');
+      showToast('Let Me Cook? saved to your home screen!');
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
@@ -132,17 +157,32 @@ export default function HomePage() {
     [history]
   );
 
-  const filteredMeals = useMemo(
-    () =>
-      filterMeals(
-        MEALS,
-        maxBudgetKes,
-        activeCategory,
+  const filteredMeals = useMemo(() => {
+    if (isFeastMode) {
+      return filterFeastMeals(
+        FEAST_MEALS,
+        feastBudgetKes,
+        activeFeastVibe,
         activeRegion,
         searchQuery
-      ),
-    [maxBudgetKes, activeCategory, activeRegion, searchQuery]
-  );
+      );
+    }
+    return filterMeals(
+      MEALS,
+      everydayBudgetKes,
+      activeCategory,
+      activeRegion,
+      searchQuery
+    );
+  }, [
+    isFeastMode,
+    feastBudgetKes,
+    activeFeastVibe,
+    everydayBudgetKes,
+    activeCategory,
+    activeRegion,
+    searchQuery,
+  ]);
 
   const sortedMeals = useMemo(() => {
     return [...filteredMeals].sort((a, b) => {
@@ -175,6 +215,14 @@ export default function HomePage() {
     setShowInstallHelp(true);
   };
 
+  const handleBudgetChange = (value: number) => {
+    if (isFeastMode) {
+      setFeastBudgetKes(value);
+    } else {
+      setEverydayBudgetKes(value);
+    }
+  };
+
   const handleLogSupper = (meal: Meal) => {
     const newEntry: SupperHistoryEntry = {
       mealId: meal.id,
@@ -195,7 +243,9 @@ export default function HomePage() {
     } catch {
       // Ignore storage quota errors
     }
-    showToast(`Logged ${meal.shortLabel} (${meal.totalCostKes} bob) for tonight!`);
+    showToast(
+      `Logged ${meal.shortLabel} (${meal.totalCostKes.toLocaleString()} bob) for tonight!`
+    );
   };
 
   const handleClearHistory = () => {
@@ -209,8 +259,13 @@ export default function HomePage() {
   };
 
   const handleResetFilters = () => {
-    setMaxBudgetKes(MAX_BUDGET_KES);
-    setActiveCategory('all');
+    if (isFeastMode) {
+      setFeastBudgetKes(FEAST_MAX_BUDGET_KES);
+      setActiveFeastVibe('all');
+    } else {
+      setEverydayBudgetKes(MAX_BUDGET_KES);
+      setActiveCategory('all');
+    }
     setActiveRegion('all');
     setSearchQuery('');
   };
@@ -225,21 +280,45 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Curved Glovo Yellow Hero Header */}
-      <header className="bg-glovo-yellow pt-5 pb-12 px-4 rounded-b-[38px] shadow-xs">
+      {/* Curved Hero Header: Sleek Charcoal & Gold in "Feeling Rich?" Mode, Signature Glovo Yellow Otherwise */}
+      <header
+        className={`pt-5 pb-12 px-4 rounded-b-[38px] shadow-xs transition-colors duration-300 ${
+          isFeastMode
+            ? 'bg-gradient-to-br from-[#181B22] via-[#232730] to-[#12151B] text-white'
+            : 'bg-glovo-yellow text-gray-900'
+        }`}
+      >
         <div className="max-w-4xl mx-auto">
           {/* Top Location & Install App Action Bar */}
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="inline-flex items-center gap-1.5 bg-white/95 px-3 py-1.5 rounded-full shadow-2xs text-xs font-extrabold text-gray-900">
-              <MapPin className="w-3.5 h-3.5 text-glovo-teal shrink-0" />
-              <span>🇰🇪 Kenya • Supper &amp; Craving Planner</span>
+            <div
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full shadow-2xs text-xs font-extrabold ${
+                isFeastMode
+                  ? 'bg-white/10 text-glovo-yellow border border-amber-400/30'
+                  : 'bg-white/95 text-gray-900'
+              }`}
+            >
+              {isFeastMode ? (
+                <Crown className="w-3.5 h-3.5 text-glovo-yellow shrink-0" />
+              ) : (
+                <MapPin className="w-3.5 h-3.5 text-glovo-teal shrink-0" />
+              )}
+              <span>
+                {isFeastMode
+                  ? '👑 Payday Edition • 500/- to 5,000/- Feasts'
+                  : '🇰🇪 Kenya • Supper & Craving Planner'}
+              </span>
             </div>
 
             {!isInstalled && (
               <button
                 type="button"
                 onClick={handleInstallClick}
-                className="inline-flex items-center gap-1.5 bg-glovo-teal hover:bg-glovo-teal-dark active:scale-95 text-white px-3.5 py-2 rounded-full shadow-sm text-xs font-extrabold transition cursor-pointer touch-manipulation shrink-0"
+                className={`inline-flex items-center gap-1.5 active:scale-95 px-3.5 py-2 rounded-full shadow-sm text-xs font-extrabold transition cursor-pointer touch-manipulation shrink-0 ${
+                  isFeastMode
+                    ? 'bg-glovo-yellow hover:bg-glovo-yellow-dark text-gray-900'
+                    : 'bg-glovo-teal hover:bg-glovo-teal-dark text-white'
+                }`}
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Save to Home Screen</span>
@@ -249,69 +328,104 @@ export default function HomePage() {
 
           {/* Hero Headline */}
           <div className="mt-4">
-            <h1 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">
-              What&apos;s on the menu tonight?
+            <h1
+              className={`text-2xl sm:text-3xl font-black tracking-tight ${
+                isFeastMode ? 'text-white' : 'text-gray-900'
+              }`}
+            >
+              {isFeastMode
+                ? 'Salary just hit? Treat yourself tonight.'
+                : "What's on the menu tonight?"}
             </h1>
-            <p className="text-xs sm:text-sm font-semibold text-gray-900/80 mt-1">
-              {MEALS.length} Kenyan bachelor &amp; middle-class suppers, hotel
-              hits, and street bites — from {MIN_BUDGET_KES} to {MAX_BUDGET_KES}{' '}
-              bob.
+            <p
+              className={`text-xs sm:text-sm font-semibold mt-1 ${
+                isFeastMode ? 'text-amber-100/85' : 'text-gray-900/80'
+              }`}
+            >
+              {isFeastMode
+                ? `${FEAST_MEALS.length} middle-class payday feasts, steakhouse cuts, coastal seafood & hosting platters — from 500 to 5,000 bob.`
+                : `${MEALS.length} Kenyan bachelor & middle-class suppers, hotel hits, and street bites — from ${MIN_BUDGET_KES} to ${MAX_BUDGET_KES} bob.`}
             </p>
           </div>
 
           {/* Interactive Budget Controller Card */}
-          <div className="mt-5 bg-white rounded-[24px] p-4 sm:p-5 shadow-md">
+          <div className="mt-5 bg-white rounded-[24px] p-4 sm:p-5 shadow-md text-gray-900">
             <div className="flex items-center justify-between gap-2 mb-3">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-glovo-teal/15 text-glovo-teal flex items-center justify-center">
-                  <Wallet className="w-4 h-4" />
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    isFeastMode
+                      ? 'bg-gray-900 text-glovo-yellow'
+                      : 'bg-glovo-teal/15 text-glovo-teal'
+                  }`}
+                >
+                  {isFeastMode ? (
+                    <Crown className="w-4 h-4" />
+                  ) : (
+                    <Wallet className="w-4 h-4" />
+                  )}
                 </div>
                 <div>
                   <span className="text-[11px] font-extrabold uppercase tracking-wider text-gray-400 block">
-                    Tonight&apos;s Pocket Ceiling
+                    {isFeastMode
+                      ? 'Payday Feast Ceiling (500/+)'
+                      : "Tonight's Pocket Ceiling"}
                   </span>
                   <span className="text-lg sm:text-xl font-black text-gray-900">
-                    Up to {maxBudgetKes} bob
+                    Up to {activeMaxBudget.toLocaleString()} bob
                   </span>
                 </div>
               </div>
 
-              <span className="px-3 py-1 rounded-full bg-glovo-teal text-white text-xs font-extrabold">
-                {filteredMeals.length} of {MEALS.length} meals
+              <span
+                className={`px-3 py-1 rounded-full text-xs font-extrabold ${
+                  isFeastMode
+                    ? 'bg-gray-900 text-glovo-yellow'
+                    : 'bg-glovo-teal text-white'
+                }`}
+              >
+                {filteredMeals.length} of {activeCatalogTotal}{' '}
+                {isFeastMode ? 'feasts' : 'meals'}
               </span>
             </div>
 
-            {/* Range Slider: 80 bob to 500 bob */}
+            {/* Dynamic Range Slider (80–500 bob OR 500–5,000 bob) */}
             <input
               type="range"
-              min={MIN_BUDGET_KES}
-              max={MAX_BUDGET_KES}
-              step={10}
-              value={maxBudgetKes}
-              onChange={(e) => setMaxBudgetKes(Number(e.target.value))}
+              min={isFeastMode ? FEAST_MIN_BUDGET_KES : MIN_BUDGET_KES}
+              max={isFeastMode ? FEAST_MAX_BUDGET_KES : MAX_BUDGET_KES}
+              step={isFeastMode ? 100 : 10}
+              value={activeMaxBudget}
+              onChange={(e) => handleBudgetChange(Number(e.target.value))}
               aria-label="Maximum supper budget in Kenyan Shillings"
-              className="w-full accent-[#00A082] h-2 bg-amber-100 rounded-lg cursor-pointer"
+              className={`w-full h-2 bg-amber-100 rounded-lg cursor-pointer ${
+                isFeastMode ? 'accent-[#1A1D24]' : 'accent-[#00A082]'
+              }`}
             />
 
             {/* Quick Budget Pills */}
             <div className="grid grid-cols-5 gap-1.5 sm:gap-2 mt-3">
-              {BUDGET_PRESETS.map((preset) => {
-                const isActive = maxBudgetKes === preset;
-                return (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => setMaxBudgetKes(preset)}
-                    className={`py-2 px-1 rounded-full text-xs font-extrabold transition cursor-pointer ${
-                      isActive
-                        ? 'bg-glovo-teal text-white shadow-xs scale-[1.03]'
-                        : 'bg-glovo-cream hover:bg-amber-100 text-gray-800 border border-amber-200/70'
-                    }`}
-                  >
-                    {preset}/-
-                  </button>
-                );
-              })}
+              {(isFeastMode ? FEAST_BUDGET_PRESETS : BUDGET_PRESETS).map(
+                (preset) => {
+                  const isActive = activeMaxBudget === preset;
+                  return (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => handleBudgetChange(preset)}
+                      className={`py-2 px-1 rounded-full text-xs font-extrabold transition cursor-pointer ${
+                        isActive
+                          ? isFeastMode
+                            ? 'bg-gray-900 text-glovo-yellow shadow-xs scale-[1.03]'
+                            : 'bg-glovo-teal text-white shadow-xs scale-[1.03]'
+                          : 'bg-glovo-cream hover:bg-amber-100 text-gray-800 border border-amber-200/70'
+                      }`}
+                    >
+                      {preset.toLocaleString()}/-
+                    </button>
+                  );
+                }
+              )}
             </div>
           </div>
         </div>
@@ -319,11 +433,13 @@ export default function HomePage() {
 
       {/* Main Content Container */}
       <main className="max-w-4xl mx-auto px-4 -mt-6 space-y-5">
-        {/* Glovo Floating Category Bubbles (11 Meal Styles & Vibes) */}
+        {/* Glovo Floating Category Bubbles (10 Everyday + "Feeling Rich?" 👑) */}
         <section aria-label="Meal categories">
           <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-2 px-1">
             {CATEGORY_BUBBLES.map((bubble) => {
               const isSelected = activeCategory === bubble.id;
+              const isRichBubble = bubble.id === 'feast';
+
               return (
                 <button
                   key={bubble.id}
@@ -334,7 +450,11 @@ export default function HomePage() {
                   <div
                     className={`w-16 h-16 sm:w-18 sm:h-18 rounded-full flex items-center justify-center text-2xl sm:text-3xl shadow-md transition-all duration-200 ${
                       isSelected
-                        ? 'bg-glovo-teal text-white scale-110 ring-4 ring-white'
+                        ? isRichBubble
+                          ? 'bg-gray-900 text-glovo-yellow scale-110 ring-4 ring-glovo-yellow'
+                          : 'bg-glovo-teal text-white scale-110 ring-4 ring-white'
+                        : isRichBubble
+                        ? 'bg-gradient-to-br from-[#232730] to-[#111318] text-glovo-yellow group-hover:scale-105 border-2 border-glovo-yellow'
                         : 'bg-white text-gray-900 group-hover:scale-105 group-active:scale-95 border border-amber-100'
                     }`}
                   >
@@ -343,7 +463,11 @@ export default function HomePage() {
                   <span
                     className={`mt-2 text-[11px] sm:text-xs font-extrabold whitespace-nowrap px-2.5 py-0.5 rounded-full transition ${
                       isSelected
-                        ? 'bg-glovo-teal text-white'
+                        ? isRichBubble
+                          ? 'bg-gray-900 text-glovo-yellow'
+                          : 'bg-glovo-teal text-white'
+                        : isRichBubble
+                        ? 'bg-gray-900/90 text-glovo-yellow'
                         : 'text-gray-800 bg-white/85'
                     }`}
                   >
@@ -354,6 +478,36 @@ export default function HomePage() {
             })}
           </div>
         </section>
+
+        {/* Dedicated Payday Vibe Sub-Filter Pills (Only shown in "Feeling Rich?" Mode) */}
+        {isFeastMode && (
+          <section aria-label="Payday feast vibes">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+              <span className="inline-flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wider text-amber-700 shrink-0 pr-1">
+                <Crown className="w-3.5 h-3.5" />
+                Vibe:
+              </span>
+              {FEAST_VIBE_PILLS.map((vibe) => {
+                const isSelected = activeFeastVibe === vibe.id;
+                return (
+                  <button
+                    key={vibe.id}
+                    type="button"
+                    onClick={() => setActiveFeastVibe(vibe.id)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition cursor-pointer shrink-0 ${
+                      isSelected
+                        ? 'bg-glovo-yellow text-gray-900 shadow-xs ring-2 ring-gray-900/15'
+                        : 'bg-white hover:bg-amber-50 text-gray-800 border border-amber-300/80'
+                    }`}
+                  >
+                    <span>{vibe.emoji}</span>
+                    <span>{vibe.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {/* Kenyan Regional Cuisine Filter Strip */}
         <section aria-label="Kenyan regional cuisines">
@@ -383,13 +537,14 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Interactive Spin-to-Eat Wheel + 4-Day Anti-Repeat Log */}
+        {/* Interactive Mystery Plate & Rolling Bowl + 4-Day Anti-Repeat Log */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           <div className="lg:col-span-7">
             <SpinWheel
               meals={filteredMeals}
               recentMealIds={recentMealIds}
-              maxBudgetKes={maxBudgetKes}
+              maxBudgetKes={activeMaxBudget}
+              isFeastMode={isFeastMode}
               onSelectMeal={(meal) => setSelectedMeal(meal)}
             />
           </div>
@@ -417,12 +572,12 @@ export default function HomePage() {
 
               {history.length === 0 ? (
                 <p className="text-xs text-gray-500 leading-relaxed">
-                  No suppers logged in the last 4 days. Tap{' '}
+                  No meals logged in the last 4 days. Tap{' '}
                   <strong className="text-gray-800">
                     &ldquo;Log Tonight&apos;s Supper&rdquo;
                   </strong>{' '}
-                  inside any meal receipt to dim it on the wheel so you keep
-                  fresh variety all week.
+                  inside any meal receipt so the mystery bowl skips repeats all
+                  week.
                 </p>
               ) : (
                 <ul className="space-y-2">
@@ -435,7 +590,8 @@ export default function HomePage() {
                         {entry.emoji} {entry.mealName}
                       </span>
                       <span className="text-[11px] font-semibold text-gray-500 shrink-0">
-                        {formatRelativeDay(entry.eatenAt)} • {entry.costKes}/-
+                        {formatRelativeDay(entry.eatenAt)} •{' '}
+                        {entry.costKes.toLocaleString()}/-
                       </span>
                     </li>
                   ))}
@@ -443,15 +599,37 @@ export default function HomePage() {
               )}
             </div>
 
-            <div className="bg-glovo-yellow/35 rounded-[24px] p-5 border border-glovo-yellow">
-              <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-gray-900 mb-1.5">
-                <Sparkles className="w-4 h-4 text-glovo-teal" />
-                <span>From 80/- Survival to 500/- Treat</span>
+            <div
+              className={`rounded-[24px] p-5 border ${
+                isFeastMode
+                  ? 'bg-gray-900 text-white border-amber-400/50'
+                  : 'bg-glovo-yellow/35 text-gray-900 border-glovo-yellow'
+              }`}
+            >
+              <div
+                className={`flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider mb-1.5 ${
+                  isFeastMode ? 'text-glovo-yellow' : 'text-gray-900'
+                }`}
+              >
+                {isFeastMode ? (
+                  <Crown className="w-4 h-4 text-glovo-yellow" />
+                ) : (
+                  <Sparkles className="w-4 h-4 text-glovo-teal" />
+                )}
+                <span>
+                  {isFeastMode
+                    ? 'Supermarket, Prime Butcher & Deli Mode'
+                    : 'From 80/- Survival to 500/- Treat'}
+                </span>
               </div>
-              <p className="text-xs text-gray-800 leading-relaxed">
-                Explore Swahili coastal curries, Western omena &amp; ingokho,
-                Central mukimo &amp; njahi, Kisii obokima &amp; ebitoke, plus
-                light suppers, breakfast-for-dinner, and mtaa street bites.
+              <p
+                className={`text-xs leading-relaxed ${
+                  isFeastMode ? 'text-gray-300' : 'text-gray-800'
+                }`}
+              >
+                {isFeastMode
+                  ? 'Independent from the 112 everyday meals. Features solo payday treats, Date Night (2) mains, and Hosting (3–4) platters sourced across Naivas, Carrefour, Prime Butcheries, Fishmongers, and Artisan Delis.'
+                  : 'Explore Swahili coastal curries, Western omena & ingokho, Central mukimo & njahi, Kisii obokima & ebitoke—or tap Feeling Rich? 👑 when salary hits!'}
               </p>
             </div>
           </div>
@@ -462,7 +640,9 @@ export default function HomePage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-black text-gray-900">
-                Eligible Combos ({sortedMeals.length})
+                {isFeastMode
+                  ? `Payday Feasts (${sortedMeals.length})`
+                  : `Eligible Combos (${sortedMeals.length})`}
               </h2>
               <span className="text-xs font-bold text-gray-500">
                 Tap any card for local lore, shopping receipt &amp; prep steps
@@ -476,7 +656,11 @@ export default function HomePage() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search pilau, mutura, rolex, uji..."
+                placeholder={
+                  isFeastMode
+                    ? 'Search ribeye, prawns, biryani, lasagna...'
+                    : 'Search pilau, mutura, rolex, uji...'
+                }
                 className="w-full pl-9 pr-8 py-2 rounded-full bg-white border border-amber-200 text-xs sm:text-sm font-semibold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-glovo-teal"
               />
               {searchQuery && (
@@ -495,12 +679,17 @@ export default function HomePage() {
           {sortedMeals.length === 0 ? (
             <div className="bg-white rounded-[24px] p-8 text-center border border-amber-100">
               <p className="text-sm font-bold text-gray-800">
-                No combos match your current budget, region, or search.
+                No {isFeastMode ? 'feasts' : 'combos'} match your current
+                budget, region, or search.
               </p>
               <button
                 type="button"
                 onClick={handleResetFilters}
-                className="mt-3 px-4 py-2 rounded-full bg-glovo-teal text-white text-xs font-extrabold cursor-pointer"
+                className={`mt-3 px-4 py-2 rounded-full text-xs font-extrabold cursor-pointer ${
+                  isFeastMode
+                    ? 'bg-gray-900 text-glovo-yellow'
+                    : 'bg-glovo-teal text-white'
+                }`}
               >
                 Reset All Filters
               </button>
@@ -510,7 +699,7 @@ export default function HomePage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {visibleMeals.map((meal) => {
                   const isRecent = recentMealIds.includes(meal.id);
-                  const balance = maxBudgetKes - meal.totalCostKes;
+                  const balance = activeMaxBudget - meal.totalCostKes;
 
                   return (
                     <article
@@ -519,15 +708,29 @@ export default function HomePage() {
                       className={`bg-white rounded-[24px] p-4 sm:p-5 shadow-sm hover:shadow-md border transition-all cursor-pointer flex flex-col justify-between ${
                         isRecent
                           ? 'border-gray-200 opacity-65 hover:opacity-95'
+                          : isFeastMode
+                          ? 'border-amber-200/90 hover:-translate-y-0.5'
                           : 'border-amber-100 hover:-translate-y-0.5'
                       }`}
                     >
                       <div>
                         <div className="flex items-center justify-between gap-2 mb-2.5">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="px-3 py-1 rounded-full bg-glovo-teal text-white text-xs font-extrabold">
-                              {meal.totalCostKes} bob
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-extrabold ${
+                                isFeastMode
+                                  ? 'bg-gray-900 text-glovo-yellow'
+                                  : 'bg-glovo-teal text-white'
+                              }`}
+                            >
+                              {meal.totalCostKes.toLocaleString()} bob
                             </span>
+                            {meal.servingTier && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-950 text-[11px] font-extrabold">
+                                <Users className="w-3 h-3" />
+                                {meal.servingTier}
+                              </span>
+                            )}
                             <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-[11px] font-bold">
                               {REGION_LABELS[meal.region]}
                             </span>
@@ -545,7 +748,7 @@ export default function HomePage() {
                           ) : (
                             balance > 0 && (
                               <span className="text-[11px] font-extrabold text-emerald-700 shrink-0">
-                                +{balance}/- left
+                                +{balance.toLocaleString()}/- left
                               </span>
                             )
                           )}
@@ -584,7 +787,11 @@ export default function HomePage() {
                           {meal.prepMinutes} mins prep
                         </span>
 
-                        <span className="text-glovo-teal inline-flex items-center gap-1 font-extrabold">
+                        <span
+                          className={`inline-flex items-center gap-1 font-extrabold ${
+                            isFeastMode ? 'text-gray-900' : 'text-glovo-teal'
+                          }`}
+                        >
                           <Receipt className="w-3.5 h-3.5" />
                           View Receipt →
                         </span>
@@ -601,7 +808,8 @@ export default function HomePage() {
                     onClick={() => setVisibleCount((prev) => prev + 24)}
                     className="px-6 py-3 rounded-full bg-white hover:bg-amber-50 text-gray-900 font-extrabold text-xs sm:text-sm border-2 border-glovo-yellow shadow-xs transition cursor-pointer"
                   >
-                    Load More Meals ({sortedMeals.length - visibleCount} more)
+                    Load More {isFeastMode ? 'Feasts' : 'Meals'} (
+                    {sortedMeals.length - visibleCount} more)
                   </button>
                 </div>
               )}
@@ -623,7 +831,7 @@ export default function HomePage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-glovo-teal font-extrabold text-sm">
                 <Smartphone className="w-5 h-5" />
-                <span>Save WhatFood to Home Screen</span>
+                <span>Save Let Me Cook? to Home Screen</span>
               </div>
               <button
                 type="button"
@@ -663,10 +871,10 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Market & Kibanda Receipt Modal */}
+      {/* Market & Payday Feast Receipt Modal */}
       <MealReceiptModal
         meal={selectedMeal}
-        maxBudgetKes={maxBudgetKes}
+        maxBudgetKes={activeMaxBudget}
         isRecentlyEaten={
           selectedMeal ? recentMealIds.includes(selectedMeal.id) : false
         }

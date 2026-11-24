@@ -44,7 +44,7 @@ export default function ServiceWorkerRegistrar() {
       className="fixed bottom-4 left-4 z-40 inline-flex items-center gap-2 rounded-full bg-gray-900/95 text-white px-3.5 py-2 text-xs font-extrabold shadow-lg border border-amber-300/30"
     >
       <WifiOff className="w-3.5 h-3.5 text-glovo-yellow shrink-0" />
-      <span>Offline Mode • All 100+ Meals Ready</span>
+      <span>Offline Mode • All 200+ Meals Ready</span>
     </div>
   );
 }
