@@ -3,8 +3,8 @@ import type { MetadataRoute } from 'next';
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: '/',
-    name: 'WhatFood Kenya — Supper & Craving Planner',
-    short_name: 'WhatFood',
+    name: 'Let Me Cook? — Supper & Craving Planner',
+    short_name: 'LetMeCook',
     description:
       '112+ Kenyan suppers, regional classics, and street bites (80–500 bob).',
     start_url: '/',

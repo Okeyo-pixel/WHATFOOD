@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
-import { RotateCw, Receipt, Sparkles, Clock, Shuffle } from 'lucide-react';
-import { Meal } from '@/data/meals';
+import { RotateCw, Receipt, Sparkles, Clock } from 'lucide-react';
+import { Meal, PrimaryCategory } from '@/data/meals';
 
 interface SpinWheelProps {
   meals: Meal[];
@@ -12,49 +12,27 @@ interface SpinWheelProps {
   onSelectMeal: (meal: Meal) => void;
 }
 
-const CENTER = 180;
-const RADIUS = 158;
-const SPIN_DURATION_MS = 4400;
-const MAX_WHEEL_SLICES = 18;
+type RevealPhase = 'idle' | 'returning' | 'shaking' | 'rolling' | 'revealed';
 
-function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
-  const rad = ((angleDeg - 90) * Math.PI) / 180;
-  return {
-    x: Number((cx + r * Math.cos(rad)).toFixed(3)),
-    y: Number((cy + r * Math.sin(rad)).toFixed(3)),
-  };
-}
+const RETURN_MS = 440;
+const SHAKE_MS = 580;
+const ROLL_MS = 1380;
 
-function describeWedge(
-  cx: number,
-  cy: number,
-  r: number,
-  startAngle: number,
-  endAngle: number
-): string {
-  const start = polarToCartesian(cx, cy, r, startAngle);
-  const end = polarToCartesian(cx, cy, r, endAngle);
-  const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
+/**
+ * Weighted random picker across ALL eligible meals:
+ * deprioritizes meals logged in the last 4 days (0.15x weight) and avoids back-to-back repeats.
+ */
+function pickMysteryMeal(
+  meals: Meal[],
+  recentMealIds: string[],
+  previousId?: string
+): Meal {
+  const pool =
+    meals.length > 1 && previousId
+      ? meals.filter((m) => m.id !== previousId)
+      : meals;
 
-  return [
-    `M ${cx} ${cy}`,
-    `L ${start.x} ${start.y}`,
-    `A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`,
-    'Z',
-  ].join(' ');
-}
-
-function getContrastTextColor(hex: string): string {
-  const clean = hex.replace('#', '');
-  const r = parseInt(clean.substring(0, 2), 16);
-  const g = parseInt(clean.substring(2, 4), 16);
-  const b = parseInt(clean.substring(4, 6), 16);
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.62 ? '#1F2937' : '#FFFFFF';
-}
-
-function pickWeightedIndex(meals: Meal[], recentMealIds: string[]): number {
-  const weights = meals.map((meal) =>
+  const weights = pool.map((meal) =>
     recentMealIds.includes(meal.id) ? 0.15 : 1.0
   );
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
@@ -62,40 +40,226 @@ function pickWeightedIndex(meals: Meal[], recentMealIds: string[]): number {
 
   for (let i = 0; i < weights.length; i++) {
     threshold -= weights[i];
-    if (threshold <= 0) return i;
+    if (threshold <= 0) return pool[i];
   }
-  return meals.length - 1;
+  return pool[pool.length - 1];
 }
 
 /**
- * Deterministic seeded PRNG (Mulberry32) so server & client render identically on first paint
- * while allowing instant random deck reshuffles when the user taps "Shuffle 18".
+ * Category-specific minimal vector food silhouettes drawn cleanly inside the plate well.
+ * Coordinates are centered around (205, 148).
  */
-function sampleWheelDeck(meals: Meal[], seed: number): Meal[] {
-  if (meals.length <= MAX_WHEEL_SLICES) return meals;
+function PlatedFoodSilhouette({
+  category,
+  accentColor,
+}: {
+  category: PrimaryCategory;
+  accentColor: string;
+}) {
+  switch (category) {
+    case 'ugali':
+      return (
+        <g>
+          {/* Rich stew / mchuzi pool on upper right */}
+          <ellipse cx="236" cy="140" rx="34" ry="18" fill="#B45309" opacity="0.92" />
+          <ellipse cx="238" cy="138" rx="24" ry="11" fill="#D97706" opacity="0.85" />
+          <circle cx="228" cy="136" r="5" fill="#7C2D12" />
+          <circle cx="244" cy="141" r="4.5" fill="#7C2D12" />
+          <circle cx="250" cy="133" r="3" fill="#22C55E" />
 
-  // On initial paint (seed === 0), evenly sample across categories so all cuisines appear cleanly
-  if (seed === 0) {
-    const step = meals.length / MAX_WHEEL_SLICES;
-    return Array.from({ length: MAX_WHEEL_SLICES }, (_, i) => {
-      return meals[Math.floor(i * step)];
-    });
+          {/* Vibrant kienyeji greens on lower right */}
+          <ellipse cx="230" cy="160" rx="28" ry="13" fill="#15803D" />
+          <ellipse cx="226" cy="157" rx="18" ry="8" fill="#22C55E" opacity="0.7" />
+          <circle cx="237" cy="161" r="3" fill="#EF4444" />
+
+          {/* Smooth white Ugali dome on left */}
+          <path
+            d="M 146 158 C 146 126, 204 126, 204 158 C 204 170, 146 170, 146 158 Z"
+            fill="#FFFDF5"
+            stroke="#E7DFC8"
+            strokeWidth="2"
+          />
+          <path
+            d="M 157 146 Q 175 139 192 146"
+            fill="none"
+            stroke="#EFE7D1"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          />
+        </g>
+      );
+
+    case 'rice':
+      return (
+        <g>
+          {/* Curry / stew ladle pool on right */}
+          <ellipse cx="234" cy="152" rx="35" ry="19" fill={accentColor} opacity="0.88" />
+          <ellipse cx="236" cy="150" rx="23" ry="11" fill="#92400E" opacity="0.45" />
+          <circle cx="244" cy="148" r="4" fill="#22C55E" />
+          <circle cx="229" cy="157" r="3.5" fill="#F97316" />
+
+          {/* Sculpted fluffy Pishori / Pilau rice mound */}
+          <path
+            d="M 146 156 C 150 124, 214 124, 218 156 C 218 168, 146 168, 146 156 Z"
+            fill="#FFFBEB"
+            stroke="#FDE68A"
+            strokeWidth="2"
+          />
+          {/* Rice grain & garnish flecks */}
+          <circle cx="166" cy="144" r="2.2" fill="#22C55E" />
+          <circle cx="182" cy="139" r="2.5" fill="#F97316" />
+          <circle cx="195" cy="148" r="2.2" fill="#15803D" />
+          <circle cx="174" cy="154" r="2.2" fill="#F59E0B" />
+          <circle cx="204" cy="154" r="2" fill="#EF4444" />
+        </g>
+      );
+
+    case 'tubers':
+      return (
+        <g>
+          {/* Savory beef / maini stew side */}
+          <ellipse cx="236" cy="146" rx="34" ry="18" fill="#9A3412" opacity="0.9" />
+          <circle cx="229" cy="144" r="5" fill="#7C2D12" />
+          <circle cx="245" cy="149" r="4.5" fill="#7C2D12" />
+          <circle cx="242" cy="139" r="3" fill="#22C55E" />
+
+          {/* Creamy Mukimo / Mash / Matoke scoop */}
+          <path
+            d="M 144 157 C 146 125, 208 125, 210 157 C 210 169, 144 169, 144 157 Z"
+            fill="#FEF08A"
+            stroke="#EAB308"
+            strokeWidth="2"
+          />
+          <circle cx="165" cy="145" r="3.5" fill="#16A34A" opacity="0.75" />
+          <circle cx="182" cy="151" r="3" fill="#16A34A" opacity="0.75" />
+          <circle cx="192" cy="142" r="3.2" fill="#F59E0B" opacity="0.75" />
+
+          {/* Fresh avocado crescent */}
+          <path
+            d="M 192 164 Q 214 176 238 164 Q 215 166 192 164 Z"
+            fill="#84CC16"
+            stroke="#4D7C0F"
+            strokeWidth="1.5"
+          />
+        </g>
+      );
+
+    case 'chapati':
+      return (
+        <g>
+          {/* Thick lentil/beef stew dip bowl on right */}
+          <ellipse cx="238" cy="144" rx="28" ry="16" fill="#FFFFFF" stroke="#E5E7EB" strokeWidth="2" />
+          <ellipse cx="238" cy="143" rx="22" ry="11" fill="#C2410C" />
+          <circle cx="233" cy="142" r="2.5" fill="#22C55E" />
+          <circle cx="245" cy="144" r="2.5" fill="#FACC15" />
+
+          {/* Two overlapping golden layered chapatis */}
+          <ellipse
+            cx="176"
+            cy="154"
+            rx="34"
+            ry="18"
+            fill="#F6C46B"
+            stroke="#D99B38"
+            strokeWidth="2"
+          />
+          <ellipse
+            cx="188"
+            cy="148"
+            rx="33"
+            ry="17"
+            fill="#FBD38D"
+            stroke="#D99B38"
+            strokeWidth="2"
+          />
+          {/* Toasted pan blister spots */}
+          <ellipse cx="178" cy="145" rx="5" ry="2.5" fill="#B45309" opacity="0.55" />
+          <ellipse cx="196" cy="151" rx="6" ry="2.5" fill="#B45309" opacity="0.5" />
+          <ellipse cx="188" cy="140" rx="4" ry="2" fill="#B45309" opacity="0.45" />
+        </g>
+      );
+
+    case 'light':
+      return (
+        <g>
+          {/* Crisp salad / broth inner bowl */}
+          <ellipse cx="205" cy="149" rx="54" ry="24" fill="#DCFCE7" stroke="#86EFAC" strokeWidth="2" />
+          <ellipse cx="186" cy="146" rx="20" ry="10" fill="#22C55E" opacity="0.8" />
+          <ellipse cx="222" cy="148" rx="22" ry="10" fill="#16A34A" opacity="0.75" />
+          <ellipse cx="204" cy="155" rx="20" ry="8" fill="#84CC16" />
+          {/* Tomato & protein slices */}
+          <circle cx="190" cy="150" r="5" fill="#EF4444" />
+          <circle cx="218" cy="143" r="5" fill="#EF4444" />
+          <ellipse cx="206" cy="144" rx="10" ry="5" fill="#FDE047" />
+        </g>
+      );
+
+    case 'lunch':
+      return (
+        <g>
+          {/* Golden fries / pasta base on left */}
+          <g fill="#FBBF24" stroke="#D97706" strokeWidth="1.2">
+            <rect x="152" y="138" width="26" height="6" rx="3" transform="rotate(-14 165 141)" />
+            <rect x="158" y="146" width="28" height="6" rx="3" transform="rotate(8 172 149)" />
+            <rect x="150" y="153" width="26" height="6" rx="3" transform="rotate(-6 163 156)" />
+            <rect x="166" y="156" width="26" height="6" rx="3" transform="rotate(15 179 159)" />
+          </g>
+          {/* Bistro protein & glaze on right */}
+          <ellipse cx="228" cy="149" rx="30" ry="17" fill="#B45309" stroke="#78350F" strokeWidth="1.5" />
+          <ellipse cx="225" cy="145" rx="18" ry="8" fill="#D97706" opacity="0.7" />
+          {/* Kachumbari garnish */}
+          <circle cx="202" cy="161" r="4" fill="#EF4444" />
+          <circle cx="211" cy="163" r="3.5" fill="#22C55E" />
+        </g>
+      );
+
+    case 'breakfast':
+      return (
+        <g>
+          {/* Cozy steaming Kenyan Chai mug on right */}
+          <rect x="218" y="124" width="34" height="34" rx="8" fill="#FFFFFF" stroke="#00A082" strokeWidth="2.5" />
+          <path d="M 252 132 C 262 132, 262 149, 252 149" fill="none" stroke="#00A082" strokeWidth="3" strokeLinecap="round" />
+          <ellipse cx="235" cy="127" rx="13" ry="4" fill="#D97706" opacity="0.75" />
+
+          {/* Golden mandazi / toast / omelette fold on left */}
+          <path
+            d="M 152 158 L 176 130 L 204 156 Z"
+            fill="#F59E0B"
+            stroke="#B45309"
+            strokeWidth="2"
+            strokeLinejoin="round"
+          />
+          <ellipse cx="195" cy="160" rx="15" ry="8" fill="#FEF3C7" stroke="#F59E0B" strokeWidth="1.5" />
+          <circle cx="195" cy="160" r="4.5" fill="#FACC15" />
+        </g>
+      );
+
+    case 'snacks':
+    default:
+      return (
+        <g>
+          {/* Street platter: samosa triangles + skewers + ukwaju dip */}
+          <path
+            d="M 152 156 L 174 132 L 194 156 Z"
+            fill="#F59E0B"
+            stroke="#B45309"
+            strokeWidth="2"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M 178 161 L 200 137 L 220 161 Z"
+            fill="#FBBF24"
+            stroke="#B45309"
+            strokeWidth="2"
+            strokeLinejoin="round"
+          />
+          {/* Tangy ukwaju / kachumbari dip cup */}
+          <ellipse cx="240" cy="150" rx="20" ry="11" fill="#FFFFFF" stroke="#E5E7EB" strokeWidth="2" />
+          <ellipse cx="240" cy="149" rx="14" ry="7" fill="#DC2626" />
+          <circle cx="236" cy="148" r="2" fill="#22C55E" />
+        </g>
+      );
   }
-
-  let s = seed >>> 0;
-  const nextRand = () => {
-    s += 0x6d2b79f5;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-
-  const copy = [...meals];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(nextRand() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy.slice(0, MAX_WHEEL_SLICES);
 }
 
 export default function SpinWheel({
@@ -104,71 +268,77 @@ export default function SpinWheel({
   maxBudgetKes,
   onSelectMeal,
 }: SpinWheelProps) {
-  const [rotation, setRotation] = useState<number>(0);
-  const [isSpinning, setIsSpinning] = useState<boolean>(false);
+  const [phase, setPhase] = useState<RevealPhase>('idle');
   const [winner, setWinner] = useState<Meal | null>(null);
-  const [shuffleSeed, setShuffleSeed] = useState<number>(0);
-  const spinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  const wheelMeals = useMemo(
-    () => sampleWheelDeck(meals, shuffleSeed),
-    [meals, shuffleSeed]
-  );
+  const clearAllTimers = () => {
+    timersRef.current.forEach((t) => clearTimeout(t));
+    timersRef.current = [];
+  };
 
   useEffect(() => {
-    return () => {
-      if (spinTimerRef.current) clearTimeout(spinTimerRef.current);
-    };
+    return () => clearAllTimers();
   }, []);
 
+  // Reset the ceramic bowl over the plate if filters exclude the current winner
   useEffect(() => {
     if (winner && !meals.some((m) => m.id === winner.id)) {
+      clearAllTimers();
       setWinner(null);
+      setPhase('idle');
     }
   }, [meals, winner]);
 
   const fireGlovoConfetti = () => {
     confetti({
-      particleCount: 80,
-      spread: 72,
-      origin: { y: 0.55 },
+      particleCount: 85,
+      spread: 74,
+      origin: { y: 0.52 },
       colors: ['#FFC244', '#00A082', '#FF7A59', '#FFFFFF'],
     });
   };
 
-  const handleShuffleDeck = () => {
-    if (isSpinning) return;
-    setWinner(null);
-    setShuffleSeed((prev) => prev + Math.floor(Math.random() * 9999) + 1);
+  const runRevealSequence = (nextMeal: Meal) => {
+    setWinner(nextMeal);
+    setPhase('shaking');
+
+    const rollTimer = setTimeout(() => {
+      setPhase('rolling');
+    }, SHAKE_MS);
+
+    const finishTimer = setTimeout(() => {
+      setPhase('revealed');
+      fireGlovoConfetti();
+    }, SHAKE_MS + ROLL_MS);
+
+    timersRef.current.push(rollTimer, finishTimer);
   };
 
-  const handleSpin = () => {
-    if (isSpinning || wheelMeals.length === 0) return;
+  const handleCook = () => {
+    if (
+      meals.length === 0 ||
+      phase === 'returning' ||
+      phase === 'shaking' ||
+      phase === 'rolling'
+    ) {
+      return;
+    }
 
-    const chosenIndex = pickWeightedIndex(wheelMeals, recentMealIds);
-    const chosenMeal = wheelMeals[chosenIndex];
-    const sliceAngle = 360 / wheelMeals.length;
-    const midAngle = (chosenIndex + 0.5) * sliceAngle;
+    clearAllTimers();
+    const chosenMeal = pickMysteryMeal(meals, recentMealIds, winner?.id);
 
-    const maxJitter = Math.min(sliceAngle * 0.25, 10);
-    const jitter = (Math.random() * 2 - 1) * maxJitter;
+    // If a meal is already uncovered, roll the ceramic bowl back over the plate first
+    if (phase === 'revealed') {
+      setPhase('returning');
+      const restartTimer = setTimeout(() => {
+        runRevealSequence(chosenMeal);
+      }, RETURN_MS);
+      timersRef.current.push(restartTimer);
+      return;
+    }
 
-    const targetMod = (((360 - midAngle + jitter) % 360) + 360) % 360;
-    const currentMod = ((rotation % 360) + 360) % 360;
-    const delta = ((targetMod - currentMod) + 360) % 360;
-    const fullSpins = (5 + Math.floor(Math.random() * 3)) * 360;
-
-    setIsSpinning(true);
-    setWinner(null);
-    setRotation((prev) => prev + fullSpins + delta);
-
-    if (spinTimerRef.current) clearTimeout(spinTimerRef.current);
-
-    spinTimerRef.current = setTimeout(() => {
-      setIsSpinning(false);
-      setWinner(chosenMeal);
-      fireGlovoConfetti();
-    }, SPIN_DURATION_MS);
+    runRevealSequence(chosenMeal);
   };
 
   if (meals.length === 0) {
@@ -186,220 +356,332 @@ export default function SpinWheel({
     );
   }
 
-  const sliceAngle = 360 / wheelMeals.length;
-  const labelFontSize =
-    wheelMeals.length > 13 ? 8.3 : wheelMeals.length > 8 ? 9.8 : 11.5;
-  const emojiFontSize = wheelMeals.length > 13 ? 13 : 16;
+  const isAnimating =
+    phase === 'returning' || phase === 'shaking' || phase === 'rolling';
+  const isUncovered = phase === 'rolling' || phase === 'revealed';
 
-  const rimDots = Array.from({ length: 24 }, (_, idx) => {
-    const pos = polarToCartesian(CENTER, CENTER, 169, idx * 15);
-    return { idx, ...pos };
-  });
+  const bowlAnimClass =
+    phase === 'shaking'
+      ? 'lmc-bowl-shake'
+      : phase === 'rolling'
+      ? 'lmc-bowl-roll'
+      : phase === 'revealed'
+      ? 'lmc-bowl-settled'
+      : phase === 'returning'
+      ? 'lmc-bowl-return'
+      : '';
+
+  const shadowAnimClass =
+    phase === 'rolling'
+      ? 'lmc-shadow-roll'
+      : phase === 'revealed'
+      ? 'lmc-shadow-settled'
+      : phase === 'returning'
+      ? 'lmc-shadow-return'
+      : '';
 
   return (
     <div className="bg-white rounded-[24px] p-5 sm:p-6 shadow-md border border-amber-100/80 flex flex-col items-center">
-      {/* Header strip inside the wheel card */}
-      <div className="w-full flex flex-wrap items-center justify-between gap-2 mb-3">
+      {/* Top Card Header */}
+      <div className="w-full flex flex-wrap items-center justify-between gap-2 mb-2">
         <div>
           <span className="text-xs font-bold uppercase tracking-wider text-glovo-teal">
-            Supper Roulette
+            Mystery Cloche Reveal
           </span>
           <h2 className="text-lg font-extrabold text-gray-900 leading-tight">
-            Can&apos;t decide? Spin it!
+            What&apos;s under the bowl?
           </h2>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="px-3 py-1 rounded-full bg-glovo-cream text-xs font-bold text-gray-800 border border-amber-200">
-            {meals.length > MAX_WHEEL_SLICES
-              ? `18 of ${meals.length} on wheel`
-              : `${meals.length} ${meals.length === 1 ? 'option' : 'options'}`}
-          </span>
-
-          {meals.length > MAX_WHEEL_SLICES && (
-            <button
-              type="button"
-              onClick={handleShuffleDeck}
-              disabled={isSpinning}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 hover:bg-amber-200 text-gray-900 text-xs font-extrabold transition cursor-pointer disabled:opacity-50"
-            >
-              <Shuffle className="w-3.5 h-3.5 text-glovo-teal" />
-              <span>Shuffle</span>
-            </button>
-          )}
-        </div>
+        <span className="px-3 py-1 rounded-full bg-glovo-cream text-xs font-bold text-gray-800 border border-amber-200">
+          {meals.length} hidden {meals.length === 1 ? 'meal' : 'meals'}
+        </span>
       </div>
 
-      {/* Wheel Container */}
-      <div className="relative w-full max-w-[330px] aspect-square my-2 select-none">
-        {/* Top Glovo Pointer Pin */}
-        <div
-          className={`absolute top-0 left-1/2 -translate-x-1/2 -translate-y-2 z-20 transition-transform duration-150 ${
-            isSpinning ? 'scale-110' : 'scale-100'
-          }`}
-          aria-hidden="true"
+      {/* Interactive Tabletop Stage (Plate + Minimal Ceramic Bowl) */}
+      <div
+        onClick={handleCook}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleCook();
+          }
+        }}
+        aria-label="Tap to lift and roll the mystery bowl to reveal supper"
+        className="relative w-full max-w-[420px] my-2 rounded-[22px] bg-gradient-to-b from-[#FFFDF7] via-[#FFF9EB] to-[#FEF1D0] border border-amber-200/70 overflow-hidden cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-glovo-teal"
+      >
+        <svg
+          viewBox="0 0 420 245"
+          className="w-full h-auto block"
+          role="img"
+          aria-label="Covered dinner plate with rolling kitchen bowl"
         >
-          <svg
-            width="36"
-            height="44"
-            viewBox="0 0 36 44"
-            className="drop-shadow-md"
-          >
-            <path
-              d="M18 42 L5 18 A14 14 0 1 1 31 18 Z"
-              fill="#00A082"
-              stroke="#FFFFFF"
-              strokeWidth="3"
-            />
-            <circle cx="18" cy="15" r="5" fill="#FFC244" />
-          </svg>
-        </div>
+          <defs>
+            {/* Warm ceramic bowl 3D shading */}
+            <linearGradient id="ceramicBowlGrad" x1="0%" y1="0%" x2="100%" y2="90%">
+              <stop offset="0%" stopColor="#FFFFFF" />
+              <stop offset="52%" stopColor="#FAF6EC" />
+              <stop offset="100%" stopColor="#E6DFCE" />
+            </linearGradient>
 
-        {/* Rotating SVG Wheel */}
-        <div
-          className="w-full h-full will-change-transform"
-          style={{
-            transform: `rotate(${rotation}deg)`,
-            transition: isSpinning
-              ? `transform ${SPIN_DURATION_MS}ms cubic-bezier(0.12, 0.85, 0.18, 1)`
-              : 'none',
-          }}
-        >
-          <svg
-            viewBox="0 0 360 360"
-            className="w-full h-full drop-shadow-lg"
-            role="img"
-            aria-label="Spinning Kenyan supper decision wheel"
-          >
-            <circle
-              cx={CENTER}
-              cy={CENTER}
-              r="176"
-              fill="#FFC244"
-              stroke="#F2AE2E"
-              strokeWidth="4"
-            />
+            {/* Subtle plate well shading */}
+            <radialGradient id="plateWellGrad" cx="46%" cy="42%" r="58%">
+              <stop offset="0%" stopColor="#FFFFFF" />
+              <stop offset="78%" stopColor="#F8F5EE" />
+              <stop offset="100%" stopColor="#EAE3D2" />
+            </radialGradient>
 
-            {rimDots.map((dot) => (
-              <circle
-                key={dot.idx}
-                cx={dot.x}
-                cy={dot.y}
-                r="2.6"
-                fill={dot.idx % 2 === 0 ? '#FFFFFF' : '#00A082'}
-                opacity="0.9"
-              />
-            ))}
+            {/* Tabletop surface mat */}
+            <linearGradient id="tableSurfaceGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#FCE9BE" stopOpacity="0.45" />
+              <stop offset="100%" stopColor="#F8D994" stopOpacity="0.65" />
+            </linearGradient>
+          </defs>
 
-            <circle cx={CENTER} cy={CENTER} r={RADIUS + 2} fill="#FFFFFF" />
-
-            {wheelMeals.length === 1 ? (
-              <g>
-                <circle
-                  cx={CENTER}
-                  cy={CENTER}
-                  r={RADIUS}
-                  fill={wheelMeals[0].wheelColor}
-                />
-                <text
-                  x={CENTER}
-                  y={CENTER - 68}
-                  textAnchor="middle"
-                  fontSize="32"
-                >
-                  {wheelMeals[0].emoji}
-                </text>
-                <text
-                  x={CENTER}
-                  y={CENTER - 36}
-                  textAnchor="middle"
-                  fill={getContrastTextColor(wheelMeals[0].wheelColor)}
-                  fontSize="15"
-                  fontWeight="800"
-                >
-                  {wheelMeals[0].shortLabel}
-                </text>
-              </g>
-            ) : (
-              wheelMeals.map((meal, index) => {
-                const startAngle = index * sliceAngle;
-                const endAngle = (index + 1) * sliceAngle;
-                const midAngle = startAngle + sliceAngle / 2;
-                const isRecent = recentMealIds.includes(meal.id);
-                const textColor = getContrastTextColor(meal.wheelColor);
-
-                return (
-                  <g key={meal.id} opacity={isRecent ? 0.55 : 1}>
-                    <path
-                      d={describeWedge(
-                        CENTER,
-                        CENTER,
-                        RADIUS,
-                        startAngle,
-                        endAngle
-                      )}
-                      fill={meal.wheelColor}
-                      stroke="#FFFFFF"
-                      strokeWidth="2"
-                    />
-                    <g transform={`rotate(${midAngle - 90} ${CENTER} ${CENTER})`}>
-                      <text
-                        x={CENTER + RADIUS - 18}
-                        y={CENTER + 1}
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        fontSize={emojiFontSize}
-                      >
-                        {meal.emoji}
-                      </text>
-                      <text
-                        x={CENTER + RADIUS - 34}
-                        y={CENTER + 1}
-                        textAnchor="end"
-                        dominantBaseline="middle"
-                        fill={textColor}
-                        fontSize={labelFontSize}
-                        fontWeight="800"
-                        style={{ letterSpacing: '-0.01em' }}
-                      >
-                        {meal.shortLabel}
-                      </text>
-                    </g>
-                  </g>
-                );
-              })
-            )}
-          </svg>
-        </div>
-
-        {/* Center Tactile Spin Hub */}
-        <button
-          type="button"
-          onClick={handleSpin}
-          disabled={isSpinning}
-          aria-label="Spin the supper wheel"
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-16 h-16 rounded-full bg-glovo-teal hover:bg-glovo-teal-dark active:scale-95 text-white font-extrabold text-xs tracking-wide shadow-lg border-4 border-white flex flex-col items-center justify-center transition cursor-pointer disabled:opacity-80 disabled:cursor-wait"
-        >
-          <RotateCw
-            className={`w-4 h-4 mb-0.5 ${isSpinning ? 'animate-spin' : ''}`}
+          {/* Subtle Glovo Kitchen Counter / Floor Horizon */}
+          <path
+            d="M 0 162 Q 210 150 420 162 L 420 245 L 0 245 Z"
+            fill="url(#tableSurfaceGrad)"
           />
-          <span>{isSpinning ? '...' : 'SPIN'}</span>
-        </button>
+          <line
+            x1="0"
+            y1="162"
+            x2="420"
+            y2="162"
+            stroke="#F3D695"
+            strokeWidth="1.2"
+            opacity="0.7"
+          />
+
+          {/* Dynamic Plate + Food Group (gently shifts slightly left when uncovered to balance the settled bowl on the right) */}
+          <g
+            style={{
+              transform: isUncovered ? 'translateX(-48px)' : 'translateX(0px)',
+              transition: 'transform 620ms cubic-bezier(0.22, 0.82, 0.28, 1)',
+            }}
+          >
+            {/* Plate Drop Shadow */}
+            <ellipse cx="205" cy="176" rx="108" ry="26" fill="#92400E" opacity="0.13" />
+
+            {/* Outer Ceramic Dinner Plate */}
+            <ellipse
+              cx="205"
+              cy="158"
+              rx="106"
+              ry="44"
+              fill="#FFFFFF"
+              stroke="#E5DFD0"
+              strokeWidth="2.5"
+            />
+            {/* Thin Glovo Yellow Rim Accent */}
+            <ellipse
+              cx="205"
+              cy="158"
+              rx="95"
+              ry="38"
+              fill="none"
+              stroke="#FFC244"
+              strokeWidth="2.2"
+              opacity="0.75"
+            />
+            {/* Inner Plate Well */}
+            <ellipse
+              cx="205"
+              cy="156"
+              rx="81"
+              ry="31"
+              fill="url(#plateWellGrad)"
+              stroke="#EDE7D8"
+              strokeWidth="1.5"
+            />
+
+            {/* Plated Meal Silhouette (Hidden while idle/returning, revealed smoothly as bowl rolls off) */}
+            {winner && (
+              <g
+                style={{
+                  opacity: isUncovered ? 1 : 0,
+                  transform: isUncovered ? 'scale(1)' : 'scale(0.92)',
+                  transformBox: 'fill-box',
+                  transformOrigin: 'center',
+                  transition: 'opacity 360ms ease 180ms, transform 420ms ease 180ms',
+                }}
+              >
+                <PlatedFoodSilhouette
+                  category={winner.category}
+                  accentColor={winner.wheelColor}
+                />
+
+                {/* Rising Steam Wisps */}
+                <g
+                  stroke="#9CA3AF"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  fill="none"
+                >
+                  <path
+                    className="lmc-steam-1"
+                    d="M 180 116 Q 174 102 182 90"
+                  />
+                  <path
+                    className="lmc-steam-2"
+                    d="M 205 112 Q 212 96 204 82"
+                  />
+                  <path
+                    className="lmc-steam-3"
+                    d="M 230 118 Q 224 104 232 92"
+                  />
+                </g>
+
+                {/* Plated Meal Emoji Medallion */}
+                <g transform="translate(205, 118)">
+                  <circle
+                    cx="0"
+                    cy="0"
+                    r="21"
+                    fill="#FFFFFF"
+                    stroke="#00A082"
+                    strokeWidth="2.5"
+                  />
+                  <text
+                    x="0"
+                    y="2"
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize="22"
+                  >
+                    {winner.emoji}
+                  </text>
+                </g>
+
+                {/* Crisp Short Name Pill hovering below the plate */}
+                <g transform="translate(205, 214)">
+                  <rect
+                    x="-76"
+                    y="-13"
+                    width="152"
+                    height="26"
+                    rx="13"
+                    fill="#00A082"
+                  />
+                  <text
+                    x="0"
+                    y="1"
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fill="#FFFFFF"
+                    fontSize="11.5"
+                    fontWeight="800"
+                  >
+                    {winner.shortLabel}
+                  </text>
+                </g>
+              </g>
+            )}
+          </g>
+
+          {/* Dynamic Tracking Shadow Beneath the Rolling Bowl */}
+          <ellipse
+            cx="205"
+            cy="168"
+            rx="80"
+            ry="20"
+            fill="#1F2937"
+            opacity="0.22"
+            className={`lmc-shadow ${shadowAnimClass}`}
+          />
+
+          {/* Clean Minimal Inverted Ceramic Kitchen Bowl (Glovo Teal Rim Band, Zero Text) */}
+          <g className={`lmc-bowl ${bowlAnimClass}`}>
+            {/* Small Ceramic Foot Ring on Top of the Inverted Bowl */}
+            <path
+              d="M 176 74 C 176 66, 234 66, 234 74 L 238 80 C 238 86, 172 86, 172 80 Z"
+              fill="#EFEAE0"
+              stroke="#DDD6C5"
+              strokeWidth="1.8"
+            />
+            <ellipse
+              cx="205"
+              cy="73"
+              rx="28"
+              ry="6"
+              fill="#FAF7F0"
+              stroke="#DDD6C5"
+              strokeWidth="1.5"
+            />
+
+            {/* Main Inverted Ceramic Dome */}
+            <path
+              d="M 122 152 C 122 96, 156 76, 205 76 C 254 76, 288 96, 288 152 C 288 164, 122 164, 122 152 Z"
+              fill="url(#ceramicBowlGrad)"
+              stroke="#DCD5C4"
+              strokeWidth="2"
+            />
+
+            {/* Soft Glossy Specular Highlight Arc on Left Curve */}
+            <path
+              d="M 142 138 C 145 106, 162 91, 184 86"
+              fill="none"
+              stroke="#FFFFFF"
+              strokeWidth="5.5"
+              strokeLinecap="round"
+              opacity="0.85"
+            />
+            <path
+              d="M 152 142 C 154 122, 164 108, 178 100"
+              fill="none"
+              stroke="#FFFFFF"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              opacity="0.6"
+            />
+
+            {/* Thin Signature Glovo Emerald Teal Rim Band */}
+            <path
+              d="M 122 146 C 122 159, 288 159, 288 146 L 288 154 C 288 167, 122 167, 122 154 Z"
+              fill="#00A082"
+            />
+            {/* Crisp Subtle White Rim Lip */}
+            <path
+              d="M 123 154 C 123 166, 287 166, 287 154"
+              fill="none"
+              stroke="#FFFFFF"
+              strokeWidth="1.5"
+              opacity="0.7"
+            />
+          </g>
+        </svg>
+
+        {/* Subtle Tap Hint when Covered */}
+        {phase === 'idle' && (
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-white/90 text-[11px] font-extrabold text-gray-700 shadow-xs border border-amber-200/80 whitespace-nowrap">
+            Tap bowl or press below to uncover
+          </div>
+        )}
       </div>
 
       {/* Primary Thumb-Friendly CTA Button */}
       <button
         type="button"
-        onClick={handleSpin}
-        disabled={isSpinning}
+        onClick={handleCook}
+        disabled={isAnimating}
         className="w-full mt-3 py-3.5 px-6 rounded-full bg-glovo-teal hover:bg-glovo-teal-dark active:scale-[0.98] text-white font-extrabold text-base shadow-md transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75 disabled:cursor-wait"
       >
-        <Sparkles className="w-5 h-5" />
-        <span>{isSpinning ? 'Picking Tonight’s Menu...' : 'Spin for Supper!'}</span>
+        <Sparkles className={`w-5 h-5 ${isAnimating ? 'animate-spin' : ''}`} />
+        <span>
+          {phase === 'shaking'
+            ? 'Sizzling Under the Bowl...'
+            : phase === 'rolling'
+            ? 'Rolling Open...'
+            : phase === 'returning'
+            ? 'Covering Plate...'
+            : 'Let Me Cook?'}
+        </span>
       </button>
 
       {/* Celebratory Winner Result Banner */}
-      {winner && !isSpinning && (
+      {winner && phase === 'revealed' && (
         <div className="w-full mt-4 p-4 rounded-[20px] bg-glovo-cream border-2 border-glovo-yellow">
           <div className="flex items-start gap-2.5">
             <span className="text-3xl leading-none">{winner.emoji}</span>
@@ -429,11 +711,11 @@ export default function SpinWheel({
           <div className="grid grid-cols-2 gap-2.5 mt-3.5">
             <button
               type="button"
-              onClick={handleSpin}
+              onClick={handleCook}
               className="py-2.5 px-3 rounded-full bg-white hover:bg-amber-50 text-gray-800 font-bold text-xs sm:text-sm border border-amber-200 transition flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <RotateCw className="w-4 h-4" />
-              Spin Again
+              Try Another
             </button>
             <button
               type="button"

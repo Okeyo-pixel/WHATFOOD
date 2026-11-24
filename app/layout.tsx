@@ -10,7 +10,7 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'WhatFood Kenya | Supper & Craving Planner',
+  title: 'Let Me Cook? | Kenyan Supper & Craving Planner',
   description:
     '112+ Kenyan bachelor & middle-class suppers, regional classics, and street bites from 80 to 500 bob.',
   manifest: '/manifest.webmanifest',
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: 'WhatFood',
+    title: 'Let Me Cook?',
     statusBarStyle: 'default',
   },
 };
